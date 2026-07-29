@@ -1,10 +1,14 @@
-# ui.py — Интерфейс: боковая панель, супер-способности, Geometry Dash выбор уровня, меню
+# ui.py — Интерфейс: мультиязычность (RU/EN), векторые иконки, карусель уровней с блокировкой
 
 import pygame
 import math
 from settings import *
 from map_data import LEVEL_DATA, get_path
 from sound import sound_manager
+from highscores import highscore_manager
+from config import t, config_manager
+from icons import (draw_bomb_icon, draw_ice_icon, draw_gold_icon,
+                   draw_trophy_icon, draw_lock_icon, draw_star_icon)
 
 
 class Button:
@@ -43,19 +47,15 @@ class Button:
         if not self.enabled:
             color = DARK_GRAY
 
-        # Тень
         shadow_rect = self.rect.copy()
         shadow_rect.y += 2
         pygame.draw.rect(surface, (0, 0, 0, 80), shadow_rect, border_radius=self.border_radius)
 
-        # Кнопка
         pygame.draw.rect(surface, color, self.rect, border_radius=self.border_radius)
 
-        # Обводка
         border_color = (min(255, color[0] + 30), min(255, color[1] + 30), min(255, color[2] + 30))
         pygame.draw.rect(surface, border_color, self.rect, 1, border_radius=self.border_radius)
 
-        # Текст
         text_surf = self.font.render(self.text, True, self.text_color if self.enabled else GRAY)
         text_rect = text_surf.get_rect(center=self.rect.center)
         surface.blit(text_surf, text_rect)
@@ -126,7 +126,7 @@ class TowerButton:
 
 
 class AbilityButton:
-    """Кнопка супер-способности игрока"""
+    """Кнопка супер-способности игрока с отрисовкой иконки"""
 
     def __init__(self, x, y, width, height, ability_key, name, key_hint, cost, color):
         self.rect = pygame.Rect(x, y, width, height)
@@ -149,12 +149,21 @@ class AbilityButton:
         border_col = self.color if affordable else UI_BORDER
         pygame.draw.rect(surface, border_col, self.rect, 2, border_radius=6)
 
-        # Текст
-        txt_col = WHITE if affordable else GRAY
-        surf = self.font.render(f"{self.name} ({self.key_hint}) - {self.cost}g", True, txt_col)
-        surface.blit(surf, (self.rect.x + 6, self.rect.y + 6))
+        # Отрисовка векторной иконки
+        icon_x = self.rect.x + 4
+        icon_y = self.rect.y + (self.rect.height - 18) // 2
+        if self.ability_key == "airstrike":
+            draw_bomb_icon(surface, icon_x, icon_y, 18)
+        elif self.ability_key == "freeze":
+            draw_ice_icon(surface, icon_x, icon_y, 18)
+        elif self.ability_key == "gold":
+            draw_gold_icon(surface, icon_x, icon_y, 18)
 
-        # Оверлей перезарядки (Cooldown bar)
+        txt_col = WHITE if affordable else GRAY
+        disp_name = t(f"ability_{self.ability_key}").split()[-1]  # Берём чистое название без префикса
+        surf = self.font.render(f"{disp_name} ({self.key_hint}) - {self.cost}g", True, txt_col)
+        surface.blit(surf, (self.rect.x + 26, self.rect.y + 6))
+
         if cooldown_ratio > 0:
             cd_w = int(self.rect.width * cooldown_ratio)
             cd_surf = pygame.Surface((cd_w, self.rect.height), pygame.SRCALPHA)
@@ -162,8 +171,102 @@ class AbilityButton:
             surface.blit(cd_surf, (self.rect.x, self.rect.y))
 
 
+class InWorldTowerMenu:
+    """Всплывающее меню прокачки прямо над выделенной башней на карте"""
+
+    def __init__(self):
+        self.width = 210
+        self.height = 70
+        self.font_title = pygame.font.Font(None, 19)
+        self.font_btn = pygame.font.Font(None, 18)
+        self.font_stat = pygame.font.Font(None, 16)
+        self.upgrade_hover = False
+        self.sell_hover = False
+
+    def get_rect(self, tower):
+        x = max(10, min(GAME_WIDTH - self.width - 10, tower.x - self.width // 2))
+        y = tower.y - CELL_SIZE // 2 - self.height - 12
+        if y < 10:
+            y = tower.y + CELL_SIZE // 2 + 12
+        return pygame.Rect(x, y, self.width, self.height)
+
+    def get_buttons_rects(self, menu_rect):
+        btn_w = (menu_rect.width - 16) // 2
+        btn_h = 24
+        up_rect = pygame.Rect(menu_rect.x + 6, menu_rect.bottom - btn_h - 6, btn_w, btn_h)
+        sell_rect = pygame.Rect(menu_rect.x + 10 + btn_w, menu_rect.bottom - btn_h - 6, btn_w, btn_h)
+        return up_rect, sell_rect
+
+    def update(self, mouse_pos, tower):
+        if not tower:
+            return
+        menu_rect = self.get_rect(tower)
+        up_rect, sell_rect = self.get_buttons_rects(menu_rect)
+        self.upgrade_hover = up_rect.collidepoint(mouse_pos)
+        self.sell_hover = sell_rect.collidepoint(mouse_pos)
+
+    def check_click(self, mouse_pos, tower, gold):
+        if not tower:
+            return None
+        menu_rect = self.get_rect(tower)
+        up_rect, sell_rect = self.get_buttons_rects(menu_rect)
+
+        if up_rect.collidepoint(mouse_pos):
+            cost = tower.get_upgrade_cost()
+            if cost is not None and gold >= cost:
+                return "upgrade"
+        elif sell_rect.collidepoint(mouse_pos):
+            return "sell"
+        return None
+
+    def draw(self, surface, tower, gold):
+        if not tower:
+            return
+
+        menu_rect = self.get_rect(tower)
+        up_rect, sell_rect = self.get_buttons_rects(menu_rect)
+
+        pygame.draw.rect(surface, UI_BG, menu_rect, border_radius=10)
+        pygame.draw.rect(surface, GOLD_COLOR, menu_rect, 2, border_radius=10)
+
+        level_str = f"Lvl {tower.level + 1}"
+        if tower.level < 2:
+            level_str += " -> " + str(tower.level + 2)
+        title_surf = self.font_title.render(f"{tower.name} ({level_str})", True, WHITE)
+        surface.blit(title_surf, (menu_rect.x + 8, menu_rect.y + 5))
+
+        lvl_data = tower.stats_data["levels"]
+        if tower.level < 2:
+            next_dmg = lvl_data[tower.level + 1]["damage"]
+            stat_str = f"{t('damage')}: {tower.damage:.0f} -> {next_dmg}"
+        else:
+            stat_str = f"{t('damage')}: {tower.damage:.0f} ({t('max')})"
+        stat_surf = self.font_stat.render(stat_str, True, LIGHT_GRAY)
+        surface.blit(stat_surf, (menu_rect.x + 8, menu_rect.y + 22))
+
+        cost = tower.get_upgrade_cost()
+        if cost is not None:
+            can_afford = gold >= cost
+            up_col = BTN_GREEN_HOVER if self.upgrade_hover and can_afford else (BTN_GREEN if can_afford else DARK_GRAY)
+            up_txt = f"Up {cost}g"
+        else:
+            can_afford = False
+            up_col = DARK_GRAY
+            up_txt = t("max")
+
+        pygame.draw.rect(surface, up_col, up_rect, border_radius=5)
+        txt_surf = self.font_btn.render(up_txt, True, WHITE if can_afford else GRAY)
+        surface.blit(txt_surf, txt_surf.get_rect(center=up_rect.center))
+
+        sell_price = tower.get_sell_price()
+        sell_col = BTN_RED_HOVER if self.sell_hover else BTN_RED
+        pygame.draw.rect(surface, sell_col, sell_rect, border_radius=5)
+        sell_surf = self.font_btn.render(f"+{sell_price}g", True, WHITE)
+        surface.blit(sell_surf, sell_surf.get_rect(center=sell_rect.center))
+
+
 class Sidebar:
-    """Боковая панель с башнями и способностями"""
+    """Боковая панель с информацией и кнопками"""
 
     def __init__(self):
         self.x = GAME_WIDTH
@@ -173,12 +276,12 @@ class Sidebar:
         self.title_font = pygame.font.Font(None, 28)
         self.info_font = pygame.font.Font(None, 22)
         self.small_font = pygame.font.Font(None, 18)
+        self.card_font = pygame.font.Font(None, 20)
 
-        # Кнопки башен
         self.tower_buttons = []
         tower_types = list(TOWER_STATS.keys())
         btn_h = 38
-        start_y = 145
+        start_y = 135
         padding = 3
 
         for i, t_type in enumerate(tower_types):
@@ -187,38 +290,34 @@ class Sidebar:
                 TowerButton(self.x + 8, by, self.width - 16, btn_h, t_type)
             )
 
-        # Кнопки супер-способностей
-        ab_y = start_y + len(tower_types) * (btn_h + padding) + 6
-        self.ability_airstrike = AbilityButton(self.x + 8, ab_y, self.width - 16, 26, "airstrike", "💣 Авиаудар", "Q", 100, (255, 100, 50))
-        self.ability_freeze = AbilityButton(self.x + 8, ab_y + 29, self.width - 16, 26, "freeze", "❄️ Заморозка", "W", 50, (100, 200, 255))
-        self.ability_gold = AbilityButton(self.x + 8, ab_y + 58, self.width - 16, 26, "gold", "💰 Лихорадка", "E", 0, (255, 215, 0))
+        ab_y = start_y + len(tower_types) * (btn_h + padding) + 4
+        self.ability_airstrike = AbilityButton(self.x + 8, ab_y, self.width - 16, 25, "airstrike", "Airstrike", "Q", 100, (255, 100, 50))
+        self.ability_freeze = AbilityButton(self.x + 8, ab_y + 28, self.width - 16, 25, "freeze", "Freeze", "W", 50, (100, 200, 255))
+        self.ability_gold = AbilityButton(self.x + 8, ab_y + 56, self.width - 16, 25, "gold", "Gold Rush", "E", 0, (255, 215, 0))
 
-        # Кнопки управления
-        btn_area_y = ab_y + 92
+        btn_area_y = ab_y + 88
 
         self.start_wave_btn = Button(
             self.x + 8, btn_area_y, self.width - 16, 36,
-            "НАЧАТЬ ВОЛНУ", BTN_GREEN, BTN_GREEN_HOVER, font_size=22
+            t("start_wave"), BTN_GREEN, BTN_GREEN_HOVER, font_size=22
         )
 
         self.speed_btn = Button(
             self.x + 8, btn_area_y + 40, self.width - 16, 28,
-            "x1 Скорость", BTN_BLUE, BTN_BLUE_HOVER, font_size=19
+            f"x1 {t('speed')}", BTN_BLUE, BTN_BLUE_HOVER, font_size=19
         )
 
         self.sell_btn = Button(
             self.x + 8, btn_area_y + 72, (self.width - 20) // 2, 28,
-            "Продать", BTN_RED, BTN_RED_HOVER, font_size=17
+            t("sell"), BTN_RED, BTN_RED_HOVER, font_size=17
         )
-        self.sell_btn.visible = False
 
         self.upgrade_btn = Button(
             self.x + 12 + (self.width - 20) // 2, btn_area_y + 72,
             (self.width - 20) // 2, 28,
-            "Улучшить", BTN_YELLOW, BTN_YELLOW_HOVER,
+            t("upgrade"), BTN_YELLOW, BTN_YELLOW_HOVER,
             text_color=BLACK, font_size=17
         )
-        self.upgrade_btn.visible = False
 
         self.selected_tower_type = None
         self.selected_placed_tower = None
@@ -242,24 +341,21 @@ class Sidebar:
         pygame.draw.rect(surface, UI_BG, panel_rect)
         pygame.draw.line(surface, UI_BORDER, (self.x, 0), (self.x, self.height), 2)
 
-        # Заголовок
-        title_surf = self.title_font.render("botyaraTD", True, WHITE)
+        title_surf = self.title_font.render(t("title"), True, WHITE)
         surface.blit(title_surf, (self.x + self.width // 2 - title_surf.get_width() // 2, 8))
 
         pygame.draw.line(surface, UI_BORDER, (self.x + 10, 32), (self.x + self.width - 10, 32), 1)
 
-        # Статистика игрока
-        wave_text = f"Волна: {wave_num}/{MAX_WAVES}"
+        wave_text = f"{t('wave')}: {wave_num}/{MAX_WAVES}"
         wave_surf = self.info_font.render(wave_text, True, WHITE)
         surface.blit(wave_surf, (self.x + 12, 38))
 
         lives_color = HP_GREEN if lives > 10 else (HP_YELLOW if lives > 5 else HP_RED)
-        lives_surf = self.info_font.render(f"Жизни: {lives}", True, lives_color)
-        surface.blit(lives_surf, (self.x + 12, 60))
+        lives_surf = self.info_font.render(f"{t('lives')}: {lives}", True, lives_color)
+        surface.blit(lives_surf, (self.x + 12, 58))
 
-        # Полоска жизней
         bar_x = self.x + 12
-        bar_y = 78
+        bar_y = 76
         bar_w = self.width - 24
         bar_h = 6
         pygame.draw.rect(surface, HP_BG, (bar_x, bar_y, bar_w, bar_h), border_radius=3)
@@ -267,104 +363,107 @@ class Sidebar:
         if fill_w > 0:
             pygame.draw.rect(surface, lives_color, (bar_x, bar_y, fill_w, bar_h), border_radius=3)
 
-        gold_surf = self.info_font.render(f"Золото: {gold}", True, GOLD_COLOR)
-        surface.blit(gold_surf, (self.x + 12, 90))
+        gold_surf = self.info_font.render(f"{t('gold')}: {gold}", True, GOLD_COLOR)
+        surface.blit(gold_surf, (self.x + 12, 86))
 
-        pygame.draw.line(surface, UI_BORDER, (self.x + 10, 112), (self.x + self.width - 10, 112), 1)
+        pygame.draw.line(surface, UI_BORDER, (self.x + 10, 108), (self.x + self.width - 10, 108), 1)
 
-        towers_title = self.small_font.render("БАШНИ (1-8):", True, LIGHT_GRAY)
-        surface.blit(towers_title, (self.x + 12, 120))
+        towers_title = self.small_font.render(f"{t('towers')} (1-8):", True, LIGHT_GRAY)
+        surface.blit(towers_title, (self.x + 12, 114))
 
-        # Отрисовка кнопок башен
         for i, btn in enumerate(self.tower_buttons):
             btn.selected = (btn.tower_type == self.selected_tower_type)
             btn.draw(surface)
             key_surf = self.small_font.render(str(i + 1), True, GRAY)
             surface.blit(key_surf, (btn.rect.x + 3, btn.rect.y + 3))
 
-        # Отрисовка способностей
         self.ability_airstrike.draw(surface, cooldowns.get("airstrike", 0), gold)
         self.ability_freeze.draw(surface, cooldowns.get("freeze", 0), gold)
         self.ability_gold.draw(surface, cooldowns.get("gold", 0), gold)
 
-        # Отрисовка кнопок волны и скорости
         if wave_active:
-            self.start_wave_btn.text = "ВОЛНА ИДЁТ..."
+            self.start_wave_btn.text = t("wave_in_progress")
             self.start_wave_btn.enabled = False
         else:
-            self.start_wave_btn.text = "НАЧАТЬ ВОЛНУ"
+            self.start_wave_btn.text = t("start_wave")
             self.start_wave_btn.enabled = True
         self.start_wave_btn.draw(surface)
 
-        self.speed_btn.text = f"x{game_speed} Скорость"
+        self.speed_btn.text = f"x{game_speed} {t('speed')}"
         self.speed_btn.draw(surface)
 
-        # Отрисовка информации о выбранной башне
         if selected_tower:
             self.sell_btn.visible = True
             self.upgrade_btn.visible = True
 
             info_y = self.sell_btn.rect.bottom + 6
-            name = f"{selected_tower.name} (Ур.{selected_tower.level + 1})"
-            name_surf = self.info_font.render(name, True, selected_tower.color)
+            name = f"{selected_tower.name} (Lvl {selected_tower.level + 1})"
+            name_surf = self.card_font.render(name, True, selected_tower.color)
             surface.blit(name_surf, (self.x + 12, info_y))
 
-            stats_texts = [
-                f"Урон: {selected_tower.damage:.1f}",
-                f"Скор: {60 / max(1, selected_tower.fire_rate):.1f}/с",
-                f"Радиус: {selected_tower.range}",
-            ]
+            lvl_data = selected_tower.stats_data["levels"]
+            if selected_tower.level < 2:
+                next_lvl = lvl_data[selected_tower.level + 1]
+                stats_texts = [
+                    f"{t('damage')}: {selected_tower.damage:.0f} -> {next_lvl['damage']}",
+                    f"{t('range')}: {selected_tower.range} -> {next_lvl['range']}",
+                ]
+            else:
+                stats_texts = [
+                    f"{t('damage')}: {selected_tower.damage:.0f} ({t('max')})",
+                    f"{t('range')}: {selected_tower.range} ({t('max')})",
+                ]
 
             for i, text in enumerate(stats_texts):
                 s = self.small_font.render(text, True, LIGHT_GRAY)
-                surface.blit(s, (self.x + 12, info_y + 20 + i * 14))
+                surface.blit(s, (self.x + 12, info_y + 18 + i * 14))
 
             upgrade_cost = selected_tower.get_upgrade_cost()
             if upgrade_cost is not None:
                 self.upgrade_btn.text = f"Up {upgrade_cost}g"
                 self.upgrade_btn.enabled = True
             else:
-                self.upgrade_btn.text = "MAX"
+                self.upgrade_btn.text = t("max")
                 self.upgrade_btn.enabled = False
 
-            self.sell_btn.text = f"Продать"
+            self.sell_btn.text = t("sell")
+            self.sell_btn.draw(surface)
+            self.upgrade_btn.draw(surface)
         else:
             self.sell_btn.visible = False
             self.upgrade_btn.visible = False
-
-        self.sell_btn.draw(surface)
-        self.upgrade_btn.draw(surface)
+            hint_surf = self.small_font.render(t("hint_upgrade"), True, GRAY)
+            surface.blit(hint_surf, (self.x + 12, self.height - 30))
 
 
 class LevelSelectMenu:
-    """ Geometry Dash Style Карусель вы выбора 5 уровней """
+    """ Карусель выбора 5 уровней с блокировкой замков и векторными иконками """
 
     def __init__(self):
         self.title_font = pygame.font.Font(None, 65)
         self.card_title_font = pygame.font.Font(None, 40)
         self.diff_font = pygame.font.Font(None, 26)
         self.desc_font = pygame.font.Font(None, 20)
+        self.score_font = pygame.font.Font(None, 22)
 
-        self.selected_level = 0  # 0..4
+        self.selected_level = 0
 
-        # Кнопки карусели
         card_w, card_h = 560, 420
         card_x = WINDOW_WIDTH // 2 - card_w // 2
         card_y = WINDOW_HEIGHT // 2 - card_h // 2 + 10
 
         self.card_rect = pygame.Rect(card_x, card_y, card_w, card_h)
 
-        # Стрелки управления (слева и справа от карточки)
         self.left_btn = Button(card_x - 75, card_y + card_h // 2 - 40, 60, 80, "<",
                                BTN_BLUE, BTN_BLUE_HOVER, font_size=50, border_radius=12)
         self.right_btn = Button(card_x + card_w + 15, card_y + card_h // 2 - 40, 60, 80, ">",
                                 BTN_BLUE, BTN_BLUE_HOVER, font_size=50, border_radius=12)
 
-        self.play_btn = Button(card_x + card_w // 2 - 120, card_y + card_h - 65, 240, 48,
-                               "ИГРАТЬ УРОВЕНЬ", BTN_GREEN, BTN_GREEN_HOVER, font_size=26)
+        self.play_btn = Button(card_x + card_w // 2 - 140, card_y + card_h - 60, 280, 48,
+                               t("play_level"), BTN_GREEN, BTN_GREEN_HOVER, font_size=24)
         
         self.back_btn = Button(WINDOW_WIDTH // 2 - 100, WINDOW_HEIGHT - 55, 200, 40,
-                               "НАЗАД В МЕНЮ", BTN_RED, BTN_RED_HOVER, font_size=22)
+                               t("back_to_menu"), BTN_RED, BTN_RED_HOVER, font_size=22)
 
         self.timer = 0
 
@@ -379,6 +478,16 @@ class LevelSelectMenu:
     def update(self, mouse_pos):
         self.left_btn.update(mouse_pos)
         self.right_btn.update(mouse_pos)
+        self.play_btn.text = t("play_level")
+        self.back_btn.text = t("back_to_menu")
+        
+        is_unlocked = highscore_manager.is_level_unlocked(self.selected_level)
+        if not is_unlocked:
+            self.play_btn.enabled = False
+            self.play_btn.text = t("locked")
+        else:
+            self.play_btn.enabled = True
+
         self.play_btn.update(mouse_pos)
         self.back_btn.update(mouse_pos)
         self.timer += 1
@@ -386,45 +495,48 @@ class LevelSelectMenu:
     def draw(self, surface):
         surface.fill((15, 15, 25))
 
-        # Заголовок
-        title = self.title_font.render("ВЫБОР УРОВНЯ", True, WHITE)
+        title = self.title_font.render(t("level_select"), True, WHITE)
         surface.blit(title, (WINDOW_WIDTH // 2 - title.get_width() // 2, 25))
 
         lvl_info = LEVEL_DATA[self.selected_level]
+        score_info = highscore_manager.get_score(self.selected_level)
+        is_unlocked = highscore_manager.is_level_unlocked(self.selected_level)
 
-        # Отрисовка Главной Карточки Уровня (Geometry Dash Style)
         card = self.card_rect
         pygame.draw.rect(surface, UI_PANEL, card, border_radius=18)
 
-        # Эффект свечения границы уровня в зависимости от его темы
-        glow_color = lvl_info["border_color"]
+        glow_color = lvl_info["border_color"] if is_unlocked else (80, 80, 80)
         pygame.draw.rect(surface, glow_color, card, 3, border_radius=18)
 
-        # Название уровня
-        name_surf = self.card_title_font.render(lvl_info["name"], True, WHITE)
-        surface.blit(name_surf, (card.centerx - name_surf.get_width() // 2, card.y + 20))
+        name_surf = self.card_title_font.render(lvl_info["name"], True, WHITE if is_unlocked else GRAY)
+        surface.blit(name_surf, (card.centerx - name_surf.get_width() // 2, card.y + 15))
 
-        # Плашка сложности
-        diff_colors = {
-            "Легко": (60, 200, 80),
-            "Нормально": (255, 200, 50),
-            "Сложно": (255, 120, 40),
-            "Эксперт": (200, 50, 255),
-            "Апокалипсис": (255, 40, 40),
-        }
-        diff_col = diff_colors.get(lvl_info["diff"], GOLD_COLOR)
-        diff_surf = self.diff_font.render(f"Сложность: {lvl_info['diff']}", True, diff_col)
-        surface.blit(diff_surf, (card.centerx - diff_surf.get_width() // 2, card.y + 60))
+        diff_key = f"diff_{self.selected_level}"
+        diff_str = t(diff_key)
+        diff_surf = self.diff_font.render(f"{t('difficulty')}: {diff_str}", True, GOLD_COLOR if is_unlocked else GRAY)
+        surface.blit(diff_surf, (card.centerx - diff_surf.get_width() // 2, card.y + 50))
 
-        # Мини-карта / Превью уровня
-        thumb_w, thumb_h = 320, 180
+        # Отрисовка Векторных Звёзд Рекорда
+        stars_cnt = 0
+        if score_info["completed"]:
+            stars_cnt = 3
+        elif score_info["best_wave"] >= 15:
+            stars_cnt = 2
+        elif score_info["best_wave"] >= 5:
+            stars_cnt = 1
+
+        stars_start_x = card.centerx - 30
+        for s_idx in range(3):
+            draw_star_icon(surface, stars_start_x + s_idx * 22, card.y + 75, 18, filled=(s_idx < stars_cnt))
+
+        # Превью уровня
+        thumb_w, thumb_h = 300, 150
         thumb_x = card.centerx - thumb_w // 2
-        thumb_y = card.y + 95
+        thumb_y = card.y + 105
 
         thumb_surf = pygame.Surface((thumb_w, thumb_h))
         thumb_surf.fill(lvl_info["bg_color"])
 
-        # Отрисовка уменьшенной сетки дороги
         grid = lvl_info["grid"]
         rows = len(grid)
         cols = len(grid[0])
@@ -441,19 +553,36 @@ class LevelSelectMenu:
         surface.blit(thumb_surf, (thumb_x, thumb_y))
         pygame.draw.rect(surface, glow_color, (thumb_x, thumb_y, thumb_w, thumb_h), 2, border_radius=6)
 
-        # Описание уровня
-        desc_surf = self.desc_font.render(lvl_info["desc"], True, LIGHT_GRAY)
-        surface.blit(desc_surf, (card.centerx - desc_surf.get_width() // 2, thumb_y + thumb_h + 15))
+        if not is_unlocked:
+            lock_overlay = pygame.Surface((card.width, card.height), pygame.SRCALPHA)
+            lock_overlay.fill((0, 0, 0, 180))
+            surface.blit(lock_overlay, card.topleft)
 
-        # Точки-индикаторы карусели уровня (Dots Indicator)
-        dots_y = card.bottom - 80
+            draw_lock_icon(surface, card.centerx - 12, card.centery - 45, 24)
+
+            lock_text = self.card_title_font.render(t("locked"), True, (255, 80, 80))
+            surface.blit(lock_text, (card.centerx - lock_text.get_width() // 2, card.centery - 15))
+
+            pass_text = self.desc_font.render(t("pass_prev"), True, LIGHT_GRAY)
+            surface.blit(pass_text, (card.centerx - pass_text.get_width() // 2, card.centery + 18))
+
+        else:
+            desc_surf = self.desc_font.render(lvl_info["desc"], True, LIGHT_GRAY)
+            surface.blit(desc_surf, (card.centerx - desc_surf.get_width() // 2, thumb_y + thumb_h + 8))
+
+            draw_trophy_icon(surface, card.centerx - 110, thumb_y + thumb_h + 26, 18)
+
+            rec_text = f"{t('record')}: {score_info['best_wave']}/{MAX_WAVES}  |  {t('kills')}: {score_info['best_kills']}"
+            rec_surf = self.score_font.render(rec_text, True, GOLD_COLOR)
+            surface.blit(rec_surf, (card.centerx - rec_surf.get_width() // 2 + 10, thumb_y + thumb_h + 26))
+
+        dots_y = card.bottom - 75
         for i in range(len(LEVEL_DATA)):
             dot_x = card.centerx - (len(LEVEL_DATA) * 16) // 2 + i * 16 + 8
             dot_color = GOLD_COLOR if i == self.selected_level else DARK_GRAY
             dot_radius = 5 if i == self.selected_level else 3
             pygame.draw.circle(surface, dot_color, (dot_x, dots_y), dot_radius)
 
-        # Отрисовка кнопок
         self.left_btn.draw(surface)
         self.right_btn.draw(surface)
         self.play_btn.draw(surface)
@@ -470,16 +599,20 @@ class MainMenu:
         btn_w, btn_h = 280, 50
         center_x = WINDOW_WIDTH // 2 - btn_w // 2
 
-        self.play_btn = Button(center_x, 320, btn_w, btn_h, "ВЫБОР УРОВНЯ",
+        self.play_btn = Button(center_x, 320, btn_w, btn_h, t("play"),
                                BTN_GREEN, BTN_GREEN_HOVER, font_size=30)
-        self.settings_btn = Button(center_x, 385, btn_w, btn_h, "НАСТРОЙКИ",
+        self.settings_btn = Button(center_x, 385, btn_w, btn_h, t("settings"),
                                    BTN_BLUE, BTN_BLUE_HOVER, font_size=30)
-        self.quit_btn = Button(center_x, 450, btn_w, btn_h, "ВЫХОД",
+        self.quit_btn = Button(center_x, 450, btn_w, btn_h, t("quit"),
                                BTN_RED, BTN_RED_HOVER, font_size=30)
 
         self.timer = 0
 
     def update(self, mouse_pos):
+        self.play_btn.text = t("play")
+        self.settings_btn.text = t("settings")
+        self.quit_btn.text = t("quit")
+
         self.play_btn.update(mouse_pos)
         self.settings_btn.update(mouse_pos)
         self.quit_btn.update(mouse_pos)
@@ -498,7 +631,7 @@ class MainMenu:
             pygame.draw.circle(s, (color_val, color_val, color_val + 40, alpha), (size, size), size)
             surface.blit(s, (x - size, y - size))
 
-        title_text = "botyaraTD"
+        title_text = t("title")
         shadow = self.title_font.render(title_text, True, (0, 0, 0))
         surface.blit(shadow, (WINDOW_WIDTH // 2 - shadow.get_width() // 2 + 3, 103))
 
@@ -509,7 +642,7 @@ class MainMenu:
         title_surf = self.title_font.render(title_text, True, (r, g, b))
         surface.blit(title_surf, (WINDOW_WIDTH // 2 - title_surf.get_width() // 2, 100))
 
-        sub = self.subtitle_font.render("Deluxe Edition & 5 Levels", True, GRAY)
+        sub = self.subtitle_font.render(t("subtitle"), True, GRAY)
         surface.blit(sub, (WINDOW_WIDTH // 2 - sub.get_width() // 2, 175))
 
         line_y = 220
@@ -519,8 +652,8 @@ class MainMenu:
                          (WINDOW_WIDTH // 2 + line_w // 2, line_y), 2)
 
         desc_lines = [
-            "5 карт | 8 типов башен | Супер-способности",
-            "Процедурный звук | Сочные визуальные эффекты",
+            "5 Level Campaign | 8 Tower Types | Super Abilities",
+            "Custom Audio Support | Juicy Visuals",
         ]
         for i, line in enumerate(desc_lines):
             desc_surf = self.subtitle_font.render(line, True, LIGHT_GRAY)
@@ -530,12 +663,12 @@ class MainMenu:
         self.settings_btn.draw(surface)
         self.quit_btn.draw(surface)
 
-        ver = self.subtitle_font.render("v2.0 | Deluxe Pygame", True, DARK_GRAY)
+        ver = self.subtitle_font.render("v2.1 | Deluxe Pygame", True, DARK_GRAY)
         surface.blit(ver, (WINDOW_WIDTH // 2 - ver.get_width() // 2, WINDOW_HEIGHT - 40))
 
 
 class SettingsMenu:
-    """Меню настроек"""
+    """Меню настроек с возможностью переключения языка и сохранности в config.json"""
 
     def __init__(self):
         self.title_font = pygame.font.Font(None, 50)
@@ -543,30 +676,44 @@ class SettingsMenu:
         self.small_font = pygame.font.Font(None, 22)
 
         center_x = WINDOW_WIDTH // 2
-        self.volume_level = 0.5
-        self.difficulty = 1
-        self.diff_names = ["Легко", "Нормально", "Сложно"]
+        btn_w = 280
 
-        btn_w = 260
-        self.vol_btn = Button(center_x - btn_w // 2, 220, btn_w, 40,
-                              f"Громкость: {int(self.volume_level * 100)}%",
+        self.lang_btn = Button(center_x - btn_w // 2, 190, btn_w, 40,
+                               f"{t('language')}: {config_manager.language.upper()}",
+                               BTN_BLUE, BTN_BLUE_HOVER, font_size=22)
+
+        self.vol_btn = Button(center_x - btn_w // 2, 245, btn_w, 40,
+                              f"{t('volume')}: {int(config_manager.volume * 100)}%",
                               BTN_BLUE, BTN_BLUE_HOVER, font_size=22)
 
-        self.diff_btn = Button(center_x - btn_w // 2, 280, btn_w, 40,
-                               f"Сложность: {self.diff_names[self.difficulty]}",
+        self.diff_btn = Button(center_x - btn_w // 2, 300, btn_w, 40,
+                               f"{t('difficulty')}: {t(f'diff_{config_manager.difficulty}')}",
                                BTN_BLUE, BTN_BLUE_HOVER, font_size=22)
 
         self.back_btn = Button(center_x - btn_w // 2, 450, btn_w, 45,
-                               "НАЗАД", BTN_RED, BTN_RED_HOVER, font_size=26)
+                               t("back"), BTN_RED, BTN_RED_HOVER, font_size=26)
 
     def toggle_volume(self):
-        self.volume_level = (self.volume_level + 0.25)
-        if self.volume_level > 1.05:
-            self.volume_level = 0.0
-        sound_manager.set_volume(self.volume_level)
+        config_manager.volume += 0.25
+        if config_manager.volume > 1.05:
+            config_manager.volume = 0.0
+        sound_manager.set_volume(config_manager.volume)
+        config_manager.save_config()
+
+    def toggle_difficulty(self):
+        config_manager.difficulty = (config_manager.difficulty + 1) % 3
+        config_manager.save_config()
+
+    def toggle_language(self):
+        config_manager.toggle_language()
 
     def update(self, mouse_pos):
-        self.vol_btn.text = f"Громкость: {int(self.volume_level * 100)}%"
+        self.lang_btn.text = f"{t('language')}: {config_manager.language.upper()}"
+        self.vol_btn.text = f"{t('volume')}: {int(config_manager.volume * 100)}%"
+        self.diff_btn.text = f"{t('difficulty')}: {t(f'diff_{config_manager.difficulty}')}"
+        self.back_btn.text = t("back")
+
+        self.lang_btn.update(mouse_pos)
         self.vol_btn.update(mouse_pos)
         self.diff_btn.update(mouse_pos)
         self.back_btn.update(mouse_pos)
@@ -574,24 +721,24 @@ class SettingsMenu:
     def draw(self, surface):
         surface.fill((15, 15, 25))
 
-        title = self.title_font.render("НАСТРОЙКИ", True, WHITE)
+        title = self.title_font.render(t("settings"), True, WHITE)
         surface.blit(title, (WINDOW_WIDTH // 2 - title.get_width() // 2, 80))
 
         pygame.draw.line(surface, UI_BORDER,
                          (WINDOW_WIDTH // 2 - 150, 130),
                          (WINDOW_WIDTH // 2 + 150, 130), 2)
 
+        self.lang_btn.draw(surface)
         self.vol_btn.draw(surface)
-        self.diff_btn.text = f"Сложность: {self.diff_names[self.difficulty]}"
         self.diff_btn.draw(surface)
 
-        controls_title = self.info_font.render("Управление:", True, LIGHT_GRAY)
-        surface.blit(controls_title, (WINDOW_WIDTH // 2 - controls_title.get_width() // 2, 350))
+        controls_title = self.info_font.render(t("controls"), True, LIGHT_GRAY)
+        surface.blit(controls_title, (WINDOW_WIDTH // 2 - controls_title.get_width() // 2, 355))
 
         controls = [
-            "1-8 — Выбор башни  |  Q, W, E — Супер-способности",
-            "Стрелки ЛЕВО / ПРАВО — Навигация в выборе уровня",
-            "ESC — Пауза / Назад  |  F9 — Скрыть окно",
+            t("controls_1"),
+            t("controls_2"),
+            t("controls_3"),
         ]
         for i, ctrl in enumerate(controls):
             c_surf = self.small_font.render(ctrl, True, GRAY)
@@ -611,11 +758,13 @@ class PauseMenu:
         btn_w = 240
 
         self.resume_btn = Button(center_x - btn_w // 2, 320, btn_w, 45,
-                                 "ПРОДОЛЖИТЬ", BTN_GREEN, BTN_GREEN_HOVER, font_size=26)
+                                 t("resume"), BTN_GREEN, BTN_GREEN_HOVER, font_size=26)
         self.menu_btn = Button(center_x - btn_w // 2, 380, btn_w, 45,
-                               "В МЕНЮ", BTN_RED, BTN_RED_HOVER, font_size=26)
+                               t("menu"), BTN_RED, BTN_RED_HOVER, font_size=26)
 
     def update(self, mouse_pos):
+        self.resume_btn.text = t("resume")
+        self.menu_btn.text = t("menu")
         self.resume_btn.update(mouse_pos)
         self.menu_btn.update(mouse_pos)
 
@@ -630,10 +779,10 @@ class PauseMenu:
         pygame.draw.rect(surface, UI_BG, (box_x, box_y, box_w, box_h), border_radius=15)
         pygame.draw.rect(surface, UI_BORDER, (box_x, box_y, box_w, box_h), 2, border_radius=15)
 
-        title = self.title_font.render("ПАУЗА", True, WHITE)
+        title = self.title_font.render(t("pause"), True, WHITE)
         surface.blit(title, (WINDOW_WIDTH // 2 - title.get_width() // 2, box_y + 30))
 
-        hint = self.info_font.render("ESC - продолжить", True, GRAY)
+        hint = self.info_font.render("ESC - " + t("resume").lower(), True, GRAY)
         surface.blit(hint, (WINDOW_WIDTH // 2 - hint.get_width() // 2, box_y + 85))
 
         self.resume_btn.draw(surface)
@@ -652,9 +801,10 @@ class GameOverScreen:
         btn_w = 240
 
         self.menu_btn = Button(center_x - btn_w // 2, 430, btn_w, 45,
-                               "В МЕНЮ", BTN_BLUE, BTN_BLUE_HOVER, font_size=26)
+                               t("menu"), BTN_BLUE, BTN_BLUE_HOVER, font_size=26)
 
     def update(self, mouse_pos):
+        self.menu_btn.text = t("menu")
         self.menu_btn.update(mouse_pos)
         self.timer += 1
 
@@ -672,10 +822,10 @@ class GameOverScreen:
         pygame.draw.rect(surface, border_color, (box_x, box_y, box_w, box_h), 3, border_radius=15)
 
         if won:
-            title_text = "ПОБЕДА!"
+            title_text = t("victory")
             title_color = (50, 255, 100)
         else:
-            title_text = "ПОРАЖЕНИЕ"
+            title_text = t("defeat")
             title_color = (255, 80, 80)
 
         pulse = math.sin(self.timer * 0.08) * 10
@@ -683,8 +833,8 @@ class GameOverScreen:
         surface.blit(title, (WINDOW_WIDTH // 2 - title.get_width() // 2, box_y + 30 + int(pulse * 0.3)))
 
         stats = [
-            f"Волна: {wave_reached}/{MAX_WAVES}",
-            f"Убийств: {kills}",
+            f"{t('wave')}: {wave_reached}/{MAX_WAVES}",
+            f"{t('kills')}: {kills}",
         ]
 
         for i, stat in enumerate(stats):
@@ -692,10 +842,10 @@ class GameOverScreen:
             surface.blit(stat_surf, (WINDOW_WIDTH // 2 - stat_surf.get_width() // 2, box_y + 120 + i * 35))
 
         if won:
-            congrats = self.info_font.render("Ты защитил базу!", True, GOLD_COLOR)
+            congrats = self.info_font.render(t("you_defended"), True, GOLD_COLOR)
             surface.blit(congrats, (WINDOW_WIDTH // 2 - congrats.get_width() // 2, box_y + 220))
         else:
-            tip = self.info_font.render("Попробуй другую стратегию!", True, GRAY)
+            tip = self.info_font.render(t("try_again"), True, GRAY)
             surface.blit(tip, (WINDOW_WIDTH // 2 - tip.get_width() // 2, box_y + 220))
 
         self.menu_btn.draw(surface)

@@ -216,3 +216,16 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# botyaraTD specific
+.venv/
+__pycache__/
+*.pyc
+.idea/
+.vscode/
+highscores.json
+config.json
+sounds/*.wav
+sounds/*.mp3
+sounds/*.ogg
+

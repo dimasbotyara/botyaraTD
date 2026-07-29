@@ -1,4 +1,4 @@
-# main.py — Главный файл, запуск игры Deluxe Edition
+# main.py — Главный файл игры botyaraTD с мультиязычностью и сохранением настроек
 
 import pygame
 import sys
@@ -13,8 +13,10 @@ from enemy import Enemy
 from projectile import Projectile
 from wave import get_wave
 from effects import EffectsManager
-from ui import (Sidebar, MainMenu, SettingsMenu, PauseMenu, GameOverScreen, LevelSelectMenu)
+from ui import (Sidebar, MainMenu, SettingsMenu, PauseMenu, GameOverScreen, LevelSelectMenu, InWorldTowerMenu)
 from sound import sound_manager
+from highscores import highscore_manager
+from config import config_manager, t
 
 
 class Game:
@@ -40,16 +42,18 @@ class Game:
         self.pause_menu = PauseMenu()
         self.game_over_screen = GameOverScreen()
         self.sidebar = Sidebar()
+        self.in_world_menu = InWorldTowerMenu()
 
         # Игровые объекты
         self.reset_game()
 
-        # Окно управления
+        # Окно управления (только для Windows)
         self.hwnd = None
-        try:
-            self.hwnd = pygame.display.get_wm_info()["window"]
-        except Exception:
-            pass
+        if sys.platform == "win32":
+            try:
+                self.hwnd = pygame.display.get_wm_info().get("window")
+            except Exception:
+                pass
 
     def reset_game(self):
         """Сброс состояния игры под выбранный уровень"""
@@ -72,7 +76,7 @@ class Game:
         self.kills = 0
         self.game_won = False
 
-        # Супер-способности игрока (таймеры перезарядки в кадрах)
+        # Перезарядка способностей
         self.cd_airstrike = 0
         self.max_cd_airstrike = 2700  # 45 сек
         self.cd_freeze = 0
@@ -99,7 +103,6 @@ class Game:
         border_col = self.level_info["border_color"]
 
         self.map_surface.fill(bg_col)
-
         game_map = self.game_map
 
         for row in range(len(game_map)):
@@ -109,11 +112,9 @@ class Game:
                 cell = game_map[row][col]
 
                 if cell == 0:
-                    # Шахматная плитка / текстура земли
                     color = bg_col if (row + col) % 2 == 0 else bg_alt
                     pygame.draw.rect(self.map_surface, color, (x, y, CELL_SIZE, CELL_SIZE))
 
-                    # Детали ландшафта по уровню
                     random.seed(row * 100 + col + self.current_level * 50)
                     for _ in range(2):
                         gx = x + random.randint(5, CELL_SIZE - 5)
@@ -132,10 +133,8 @@ class Game:
                         pygame.draw.line(self.map_surface, gc, (gx, gy), (gx + random.randint(-2, 2), gy - gl), 1)
 
                 elif cell in (1, 2, 3):
-                    # Дорога
                     pygame.draw.rect(self.map_surface, path_col, (x, y, CELL_SIZE, CELL_SIZE))
 
-                    # Текстура дороги
                     random.seed(row * 100 + col + 999)
                     for _ in range(4):
                         sx = x + random.randint(2, CELL_SIZE - 3)
@@ -148,7 +147,6 @@ class Game:
                         sc = tuple(max(0, min(255, c)) for c in sc)
                         pygame.draw.circle(self.map_surface, sc, (sx, sy), random.randint(1, 2))
 
-                    # Бордюры дороги
                     if row > 0 and game_map[row - 1][col] == 0:
                         pygame.draw.line(self.map_surface, border_col, (x, y), (x + CELL_SIZE, y), 2)
                     if row < len(game_map) - 1 and game_map[row + 1][col] == 0:
@@ -160,7 +158,6 @@ class Game:
                         pygame.draw.line(self.map_surface, border_col, (x + CELL_SIZE - 1, y),
                                          (x + CELL_SIZE - 1, y + CELL_SIZE), 2)
 
-        # Вход и выход
         if len(self.path) > 1:
             sx, sy = self.path[0]
             pygame.draw.polygon(self.map_surface, (50, 200, 80), [
@@ -175,7 +172,6 @@ class Game:
             pygame.draw.line(self.map_surface, (255, 200, 200), (ex - 5, ey - 5), (ex + 5, ey + 5), 2)
             pygame.draw.line(self.map_surface, (255, 200, 200), (ex + 5, ey - 5), (ex - 5, ey + 5), 2)
 
-        # Анимированные стрелки дороги
         for i in range(0, len(self.path) - 1, 4):
             ax, ay = self.path[i]
             bx, by = self.path[min(i + 1, len(self.path) - 1)]
@@ -193,7 +189,6 @@ class Game:
                 (int(right_x), int(right_y)),
             ])
 
-        # Сетка
         for col in range(GAME_WIDTH // CELL_SIZE + 1):
             x = col * CELL_SIZE
             pygame.draw.line(self.map_surface, (0, 0, 0, 20), (x, 0), (x, GAME_HEIGHT), 1)
@@ -202,26 +197,33 @@ class Game:
             pygame.draw.line(self.map_surface, (0, 0, 0, 20), (0, y), (GAME_WIDTH, y), 1)
 
     def hide_window(self):
-        """Скрыть/показать окно"""
-        if self.hwnd is None:
-            return
-        try:
-            SW_HIDE = 0
-            SW_SHOW = 5
-            if not self.hidden:
-                ctypes.windll.user32.ShowWindow(self.hwnd, SW_HIDE)
-                self.hidden = True
+        """Скрыть/показать окно по горячей клавише"""
+        if sys.platform == "win32":
+            if self.hwnd is None:
+                return
+            try:
+                SW_HIDE = 0
+                SW_SHOW = 5
+                if not self.hidden:
+                    ctypes.windll.user32.ShowWindow(self.hwnd, SW_HIDE)
+                    self.hidden = True
+                    if self.state == "playing":
+                        self.state = "paused"
+                else:
+                    ctypes.windll.user32.ShowWindow(self.hwnd, SW_SHOW)
+                    ctypes.windll.user32.SetForegroundWindow(self.hwnd)
+                    self.hidden = False
+            except Exception:
+                pass
+        else:
+            try:
+                pygame.display.iconify()
                 if self.state == "playing":
                     self.state = "paused"
-            else:
-                ctypes.windll.user32.ShowWindow(self.hwnd, SW_SHOW)
-                ctypes.windll.user32.SetForegroundWindow(self.hwnd)
-                self.hidden = False
-        except Exception:
-            pass
+            except Exception:
+                pass
 
     def start_wave(self):
-        """Начать новую волну"""
         if self.wave_active or self.wave_num >= MAX_WAVES:
             return
 
@@ -231,7 +233,7 @@ class Game:
         self.spawn_timer = 0
         sound_manager.play("click")
 
-        difficulty = self.settings_menu.difficulty
+        difficulty = config_manager.difficulty
         if difficulty == 0:
             cut = max(3, len(self.wave_queue) * 3 // 4)
             self.wave_queue = self.wave_queue[:cut]
@@ -241,9 +243,8 @@ class Game:
                 self.wave_queue.append(self.wave_queue[i % len(self.wave_queue)])
 
     def spawn_enemy(self, enemy_type):
-        """Заспавнить врага"""
         wave = self.wave_num
-        difficulty = self.settings_menu.difficulty
+        difficulty = config_manager.difficulty
 
         if difficulty == 2:
             wave = int(wave * 1.3)
@@ -262,19 +263,17 @@ class Game:
         self.enemies.append(enemy)
 
     def trigger_ability(self, ability_name):
-        """Использовать супер-способность"""
         if ability_name == "airstrike":
             if self.cd_airstrike <= 0 and self.gold >= 100:
                 self.gold -= 100
                 self.cd_airstrike = self.max_cd_airstrike
                 sound_manager.play("airstrike")
                 self.effects.add_shake(12.0)
-                # Ракетный удар по всему пути!
                 for pt in self.path[::4]:
                     self.effects.add_airstrike_explosion(pt[0], pt[1])
                 for enemy in self.enemies:
                     enemy.take_damage(350)
-                self.effects.add_floating_text(GAME_WIDTH//2, 100, "💣 АВИАУДАР!", (255, 100, 50), 34, 80)
+                self.effects.add_floating_text(GAME_WIDTH//2, 100, "[BOMB] AIRSTRIKE!", (255, 100, 50), 34, 80)
 
         elif ability_name == "freeze":
             if self.cd_freeze <= 0 and self.gold >= 50:
@@ -282,9 +281,9 @@ class Game:
                 self.cd_freeze = self.max_cd_freeze
                 sound_manager.play("freeze")
                 for enemy in self.enemies:
-                    enemy.apply_slow(0.85, 300)  # 5 секунд 85% замедления
+                    enemy.apply_slow(0.85, 300)
                     self.effects.add_freeze_effect(enemy.x, enemy.y)
-                self.effects.add_floating_text(GAME_WIDTH//2, 100, "❄️ ВСЁ ЗАМОРОЖЕНО!", (100, 200, 255), 34, 80)
+                self.effects.add_floating_text(GAME_WIDTH//2, 100, "[ICE] FROZEN!", (100, 200, 255), 34, 80)
 
         elif ability_name == "gold":
             if self.cd_gold <= 0:
@@ -292,10 +291,9 @@ class Game:
                 self.gold += 150
                 sound_manager.play("gold")
                 self.effects.add_gold_text(GAME_WIDTH//2, 100, 150)
-                self.effects.add_floating_text(GAME_WIDTH//2, 130, "💰 ЗОЛОТАЯ ЛИХОРАДКА!", (255, 215, 0), 34, 80)
+                self.effects.add_floating_text(GAME_WIDTH//2, 130, "[GOLD] GOLD RUSH!", (255, 215, 0), 34, 80)
 
     def place_tower(self, col, row, tower_type):
-        """Поставить башню"""
         cost = TOWER_STATS[tower_type]["levels"][0]["cost"]
         if self.gold < cost:
             return False
@@ -311,13 +309,17 @@ class Game:
         self.gold -= cost
         sound_manager.play("click")
 
+        self.selected_placed_tower = tower
+        self.sidebar.selected_placed_tower = tower
+        self.selected_tower_type = None
+        self.sidebar.selected_tower_type = None
+
         px = col * CELL_SIZE + CELL_SIZE // 2
         py = row * CELL_SIZE + CELL_SIZE // 2
         self.effects.add_explosion(px, py, TOWER_COLORS[tower_type], count=10, speed=2, size=3, lifetime=20)
         return True
 
     def sell_tower(self, tower):
-        """Продать башню"""
         sell_price = tower.get_sell_price()
         self.gold += sell_price
         sound_manager.play("gold")
@@ -331,7 +333,6 @@ class Game:
         self.sidebar.selected_placed_tower = None
 
     def upgrade_tower(self, tower):
-        """Улучшить башню"""
         cost = tower.get_upgrade_cost()
         if cost is None or self.gold < cost:
             return False
@@ -345,13 +346,10 @@ class Game:
         return True
 
     def update_game(self):
-        """Обновление игровой логики"""
         for _ in range(self.game_speed):
             self._game_tick()
 
     def _game_tick(self):
-        """Один тик игровой логики"""
-        # Обновление перезарядок способностей
         if self.cd_airstrike > 0:
             self.cd_airstrike -= 1
         if self.cd_freeze > 0:
@@ -359,7 +357,6 @@ class Game:
         if self.cd_gold > 0:
             self.cd_gold -= 1
 
-        # Спавн врагов
         if self.wave_active and self.wave_queue:
             self.spawn_timer -= 1
             if self.spawn_timer <= 0:
@@ -367,11 +364,10 @@ class Game:
                 self.spawn_enemy(enemy_type)
                 self.spawn_timer = delay
 
-        # Конец волны
         if self.wave_active and not self.wave_queue and not self.enemies:
             self.wave_active = False
             wave_bonus = 15 + self.wave_num * 3
-            difficulty = self.settings_menu.difficulty
+            difficulty = config_manager.difficulty
             if difficulty == 0:
                 wave_bonus = int(wave_bonus * 1.5)
             elif difficulty == 2:
@@ -380,16 +376,18 @@ class Game:
             sound_manager.play("gold")
             self.effects.add_floating_text(
                 GAME_WIDTH // 2, GAME_HEIGHT // 2 - 40,
-                f"Волна {self.wave_num} пройдена! +{wave_bonus}g",
+                f"Wave {self.wave_num} Cleared! +{wave_bonus}g",
                 (255, 215, 0), 30, 90
             )
+
+            highscore_manager.update_score(self.current_level, self.wave_num, self.kills, False)
 
             if self.wave_num >= MAX_WAVES:
                 self.game_won = True
                 self.state = "game_over"
                 sound_manager.play("victory")
+                highscore_manager.update_score(self.current_level, self.wave_num, self.kills, True)
 
-        # Враги
         new_enemies = []
         for enemy in self.enemies:
             enemy.update(self.enemies)
@@ -405,6 +403,7 @@ class Game:
                     if self.lives <= 0:
                         self.lives = 0
                         self.state = "game_over"
+                        highscore_manager.update_score(self.current_level, self.wave_num, self.kills, False)
                 else:
                     self.gold += enemy.reward
                     self.kills += 1
@@ -419,11 +418,9 @@ class Game:
         self.enemies = [e for e in self.enemies if e.alive]
         self.enemies.extend(new_enemies)
 
-        # Башни
         for tower in self.towers:
             tower.update(self.enemies, self.projectiles, self.effects)
 
-        # Снаряды
         for proj in self.projectiles:
             proj.update()
 
@@ -470,8 +467,16 @@ class Game:
     def handle_game_click(self, mouse_pos, button):
         mx, my = mouse_pos
 
+        if self.selected_placed_tower and button == 1:
+            action = self.in_world_menu.check_click(mouse_pos, self.selected_placed_tower, self.gold)
+            if action == "upgrade":
+                self.upgrade_tower(self.selected_placed_tower)
+                return
+            elif action == "sell":
+                self.sell_tower(self.selected_placed_tower)
+                return
+
         if mx >= GAME_WIDTH:
-            # Кнопки башен
             for btn in self.sidebar.tower_buttons:
                 if btn.is_clicked(mouse_pos, True):
                     if self.selected_tower_type == btn.tower_type:
@@ -483,7 +488,6 @@ class Game:
                     self.sidebar.selected_placed_tower = None
                     return
 
-            # Кнопки способностей
             if self.sidebar.ability_airstrike.rect.collidepoint(mouse_pos):
                 self.trigger_ability("airstrike")
                 return
@@ -549,14 +553,11 @@ class Game:
             self.sidebar.selected_placed_tower = None
 
     def draw_game(self):
-        """Отрисовка игры с эффектом тряски камеры"""
         shake_x, shake_y = self.effects.get_shake_offset()
         game_surf = pygame.Surface((GAME_WIDTH, GAME_HEIGHT))
 
-        # Карта
         game_surf.blit(self.map_surface, (0, 0))
 
-        # Подсветка клетки
         if self.hover_cell and self.selected_tower_type:
             col, row = self.hover_cell
             hx = col * CELL_SIZE
@@ -586,7 +587,6 @@ class Game:
                 pygame.draw.rect(s, (255, 50, 50, 150), (0, 0, CELL_SIZE, CELL_SIZE), 2)
                 game_surf.blit(s, (hx, hy))
 
-        # Башни
         for tower in self.towers:
             is_selected = tower is self.selected_placed_tower
             is_hovered = False
@@ -595,33 +595,29 @@ class Game:
                     is_hovered = True
             tower.draw(game_surf, selected=is_selected, hover=is_hovered)
 
-        # Враги
         for enemy in self.enemies:
             enemy.draw(game_surf)
 
-        # Снаряды
         for proj in self.projectiles:
             proj.draw(game_surf)
 
-        # Эффекты
         self.effects.draw(game_surf)
 
-        # Наложение поверхности игры с тряской
+        if self.selected_placed_tower:
+            self.in_world_menu.draw(game_surf, self.selected_placed_tower, self.gold)
+
         self.screen.blit(game_surf, (shake_x, shake_y))
 
-        # Перезарядка способностей для UI
         cooldowns = {
             "airstrike": self.cd_airstrike / self.max_cd_airstrike,
             "freeze": self.cd_freeze / self.max_cd_freeze,
             "gold": self.cd_gold / self.max_cd_gold,
         }
 
-        # Отрисовка боковой панели
         self.sidebar.draw(self.screen, self.gold, self.lives, self.wave_num,
                           self.wave_active, self.selected_placed_tower, self.game_speed, cooldowns)
 
     def run(self):
-        """Основной цикл"""
         while self.running:
             mouse_pos = pygame.mouse.get_pos()
             mouse_click = False
@@ -645,9 +641,10 @@ class Game:
                         elif event.key in (pygame.K_RIGHT, pygame.K_d):
                             self.level_select_menu.next_level()
                         elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                            self.current_level = self.level_select_menu.selected_level
-                            self.reset_game()
-                            self.state = "playing"
+                            if highscore_manager.is_level_unlocked(self.level_select_menu.selected_level):
+                                self.current_level = self.level_select_menu.selected_level
+                                self.reset_game()
+                                self.state = "playing"
                         elif event.key == pygame.K_ESCAPE:
                             self.state = "menu"
 
@@ -659,7 +656,6 @@ class Game:
                         if event.key == PAUSE_KEY:
                             self.state = "paused"
 
-                        # Способности Q, W, E
                         if event.key == pygame.K_q:
                             self.trigger_ability("airstrike")
                         elif event.key == pygame.K_w:
@@ -667,7 +663,6 @@ class Game:
                         elif event.key == pygame.K_e:
                             self.trigger_ability("gold")
 
-                        # Горячие клавиши 1-8
                         tower_types = list(TOWER_STATS.keys())
                         for i in range(8):
                             if event.key == pygame.K_1 + i and i < len(tower_types):
@@ -692,7 +687,6 @@ class Game:
                     mouse_click = True
                     mouse_button = event.button
 
-            # ОБНОВЛЕНИЕ
             if self.state == "menu":
                 self.main_menu.update(mouse_pos)
                 if mouse_click and mouse_button == 1:
@@ -711,25 +705,30 @@ class Game:
                     elif self.level_select_menu.right_btn.is_clicked(mouse_pos, True):
                         self.level_select_menu.next_level()
                     elif self.level_select_menu.play_btn.is_clicked(mouse_pos, True):
-                        self.current_level = self.level_select_menu.selected_level
-                        self.reset_game()
-                        self.state = "playing"
+                        if highscore_manager.is_level_unlocked(self.level_select_menu.selected_level):
+                            self.current_level = self.level_select_menu.selected_level
+                            self.reset_game()
+                            self.state = "playing"
                     elif self.level_select_menu.back_btn.is_clicked(mouse_pos, True):
                         self.state = "menu"
 
             elif self.state == "settings":
                 self.settings_menu.update(mouse_pos)
                 if mouse_click and mouse_button == 1:
-                    if self.settings_menu.vol_btn.is_clicked(mouse_pos, True):
+                    if self.settings_menu.lang_btn.is_clicked(mouse_pos, True):
+                        self.settings_menu.toggle_language()
+                    elif self.settings_menu.vol_btn.is_clicked(mouse_pos, True):
                         self.settings_menu.toggle_volume()
                     elif self.settings_menu.diff_btn.is_clicked(mouse_pos, True):
-                        self.settings_menu.difficulty = (self.settings_menu.difficulty + 1) % 3
+                        self.settings_menu.toggle_difficulty()
                     elif self.settings_menu.back_btn.is_clicked(mouse_pos, True):
                         self.state = "menu"
 
             elif self.state == "playing":
                 self.hover_cell = self.get_cell_at_mouse(mouse_pos)
                 self.sidebar.update(mouse_pos, self.gold)
+                if self.selected_placed_tower:
+                    self.in_world_menu.update(mouse_pos, self.selected_placed_tower)
 
                 if mouse_click:
                     self.handle_game_click(mouse_pos, mouse_button)
@@ -750,7 +749,6 @@ class Game:
                     if self.game_over_screen.menu_btn.is_clicked(mouse_pos, True):
                         self.state = "menu"
 
-            # ОТРИСОВКА
             if self.state == "menu":
                 self.main_menu.draw(self.screen)
 
