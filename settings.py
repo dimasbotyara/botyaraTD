@@ -9,7 +9,7 @@ SIDEBAR_WIDTH = 250
 GAME_WIDTH = WINDOW_WIDTH - SIDEBAR_WIDTH
 GAME_HEIGHT = WINDOW_HEIGHT
 FPS = 60
-TITLE = "Tower Defense Deluxe"
+TITLE = "botyaraTD"
 
 # === СЕТКА ===
 CELL_SIZE = 40

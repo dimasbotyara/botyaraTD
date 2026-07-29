@@ -1,9 +1,10 @@
-# tower.py — Все типы башен
+# tower.py — Все типы башен с отдачей и звуковыми эффектами
 
 import pygame
 import math
 from settings import *
 from projectile import Projectile
+from sound import sound_manager
 
 
 class Tower:
@@ -36,12 +37,13 @@ class Tower:
         # Потраченное золото (для продажи)
         self.total_spent = self.stats_data["levels"][0]["cost"]
 
-        # Анимация
+        # Анимация и отдача
         self.anim_angle = 0  # Угол поворота ствола
         self.shoot_flash = 0
         self.pulse_timer = 0
+        self.recoil = 0.0  # Смещение от отдачи при выстреле
 
-        # Лазер
+        # Специальные башни
         self.laser_target = None
         self.is_laser = tower_type == "laser"
         self.is_tesla = tower_type == "tesla"
@@ -75,6 +77,7 @@ class Tower:
         self.level += 1
         self.total_spent += cost
         self._load_stats()
+        sound_manager.play("gold")
         return True
 
     def get_sell_price(self):
@@ -84,14 +87,13 @@ class Tower:
     def find_target(self, enemies):
         """Найти ближайшего врага в радиусе"""
         best_target = None
-        best_progress = -1  # Самый дальний по пути
+        best_progress = -1
 
         for enemy in enemies:
             if not enemy.alive:
                 continue
             dist = math.hypot(enemy.x - self.x, enemy.y - self.y)
             if dist <= self.range:
-                # Приоритет - тот кто ближе к базе (дальше по пути)
                 if enemy.path_index > best_progress:
                     best_progress = enemy.path_index
                     best_target = enemy
@@ -108,6 +110,10 @@ class Tower:
         if self.shoot_flash > 0:
             self.shoot_flash -= 1
 
+        # Демпфирование отдачи
+        if self.recoil > 0:
+            self.recoil = max(0.0, self.recoil - 0.8)
+
         # Найти цель
         self.target = self.find_target(enemies)
 
@@ -122,6 +128,8 @@ class Tower:
                 self.fire_cooldown = self.fire_rate
                 self.shoot(self.target, enemies, projectiles, effects_manager)
                 self.shoot_flash = 8
+                self.recoil = 6.0  # Импульс отдачи ствола!
+                sound_manager.play(self.tower_type)
         else:
             self.laser_target = None
 
@@ -135,7 +143,6 @@ class Tower:
     def shoot(self, target, enemies, projectiles, effects_manager):
         """Выстрел"""
         if self.is_laser:
-            # Лазер не стреляет снарядами
             effects_manager.add_laser_beam(
                 (self.x, self.y),
                 (target.x, target.y),
@@ -144,11 +151,10 @@ class Tower:
             return
 
         if self.is_tesla:
-            # Тесла - молния по цепи
             self._tesla_attack(target, enemies, effects_manager)
             return
 
-        # Определяем тип снаряда
+        # Снаряд
         proj_type = "bullet"
         color = (255, 255, 200)
         speed = 7
@@ -180,11 +186,9 @@ class Tower:
             speed = 4
             size = 4
 
-        # Создаем снаряд
-        # Позиция из конца ствола
         barrel_len = CELL_SIZE // 2 + 4
-        start_x = self.x + math.cos(self.anim_angle) * barrel_len
-        start_y = self.y + math.sin(self.anim_angle) * barrel_len
+        start_x = self.x + math.cos(self.anim_angle) * (barrel_len - self.recoil)
+        start_y = self.y + math.sin(self.anim_angle) * (barrel_len - self.recoil)
 
         proj = Projectile(start_x, start_y, target, self.damage, speed, color, size, proj_type)
         proj.splash_radius = self.splash_radius
@@ -206,9 +210,9 @@ class Tower:
         chain_damage = self.damage
 
         while remaining_chains > 0:
-            chain_damage *= 0.7  # Уменьшение урона по цепи
+            chain_damage *= 0.7
             best = None
-            best_dist = 100  # Макс дистанция цепи
+            best_dist = 100
 
             for enemy in enemies:
                 if not enemy.alive or enemy in hit_enemies:
@@ -228,13 +232,12 @@ class Tower:
                 break
 
     def draw(self, surface, selected=False, hover=False):
-        """Отрисовка башни"""
+        """Отрисовка башни с учетом отдачи ствола"""
         x, y = self.x, self.y
         half = CELL_SIZE // 2
 
         # Подсветка при наведении/выделении
         if selected:
-            # Радиус атаки
             range_surf = pygame.Surface((self.range * 2 + 4, self.range * 2 + 4), pygame.SRCALPHA)
             pygame.draw.circle(range_surf, (255, 255, 255, 25), (self.range + 2, self.range + 2), self.range)
             pygame.draw.circle(range_surf, (255, 255, 255, 50), (self.range + 2, self.range + 2), self.range, 1)
@@ -258,13 +261,12 @@ class Tower:
             star_y = y + half - 5
             pygame.draw.circle(surface, GOLD_COLOR, (star_x, star_y), 2)
 
-        # Ствол / специфика башни
-        barrel_len = half + 2
+        # Длина ствола с эффектом отдачи!
+        barrel_len = half + 2 - self.recoil
         cos_a = math.cos(self.anim_angle)
         sin_a = math.sin(self.anim_angle)
 
         if self.tower_type == "machinegun":
-            # Два ствола
             for offset in (-3, 3):
                 perp_x = -sin_a * offset
                 perp_y = cos_a * offset
@@ -274,13 +276,11 @@ class Tower:
                                  (int(end[0]), int(end[1])), 3)
 
         elif self.tower_type == "sniper":
-            # Длинный ствол
             end = (x + cos_a * (barrel_len + 6), y + sin_a * (barrel_len + 6))
             pygame.draw.line(surface, (40, 40, 120), (int(x), int(y)), (int(end[0]), int(end[1])), 4)
             pygame.draw.circle(surface, (80, 80, 200), (int(end[0]), int(end[1])), 3)
 
         elif self.tower_type == "freeze":
-            # Кристалл сверху
             crystal_pulse = math.sin(self.pulse_timer * 0.08) * 2
             cr = int(6 + crystal_pulse)
             pygame.draw.polygon(surface, (150, 220, 255), [
@@ -291,54 +291,39 @@ class Tower:
             ], 1)
 
         elif self.tower_type == "cannon":
-            # Толстый короткий ствол
             end = (x + cos_a * barrel_len, y + sin_a * barrel_len)
             pygame.draw.line(surface, (150, 60, 20), (int(x), int(y)), (int(end[0]), int(end[1])), 6)
             pygame.draw.circle(surface, (180, 80, 30), (int(end[0]), int(end[1])), 4)
 
         elif self.tower_type == "laser":
-            # Линза
             pulse = math.sin(self.pulse_timer * 0.1) * 2
             end = (x + cos_a * barrel_len, y + sin_a * barrel_len)
             pygame.draw.line(surface, (200, 30, 30), (int(x), int(y)), (int(end[0]), int(end[1])), 3)
             pygame.draw.circle(surface, (255, 80 + int(pulse * 10), 80), (int(end[0]), int(end[1])), int(4 + pulse))
-            # Лазерный луч
             if self.laser_target and self.target and self.target.alive:
                 beam_surf = pygame.Surface((GAME_WIDTH, GAME_HEIGHT), pygame.SRCALPHA)
                 pygame.draw.line(beam_surf, (255, 50, 50, 150),
                                  (int(end[0]), int(end[1])),
                                  (int(self.target.x), int(self.target.y)), 2)
-                # Glow
                 pygame.draw.line(beam_surf, (255, 100, 100, 50),
                                  (int(end[0]), int(end[1])),
                                  (int(self.target.x), int(self.target.y)), 5)
                 surface.blit(beam_surf, (0, 0))
 
         elif self.tower_type == "poison":
-            # Бочка
             pygame.draw.circle(surface, (50, 150, 50), (x, y), 8)
             pygame.draw.circle(surface, (80, 220, 80), (x, y), 5)
-            # Пузырьки
             bx = x + int(math.sin(self.pulse_timer * 0.15) * 5)
             by = y - 8 - int(abs(math.sin(self.pulse_timer * 0.1)) * 4)
             pygame.draw.circle(surface, (100, 230, 100), (bx, by), 2)
 
         elif self.tower_type == "tesla":
-            # Катушка
             coil_height = 12 + int(math.sin(self.pulse_timer * 0.12) * 2)
             pygame.draw.line(surface, (140, 100, 220), (x, y + 4), (x, y - coil_height), 3)
             pygame.draw.circle(surface, (200, 160, 255), (x, y - coil_height), 5)
             pygame.draw.circle(surface, (220, 200, 255), (x, y - coil_height), 3)
-            # Электрические искры
-            if self.pulse_timer % 10 < 5:
-                import random as rnd
-                for _ in range(2):
-                    sx = x + rnd.randint(-8, 8)
-                    sy = y - coil_height + rnd.randint(-6, 6)
-                    pygame.draw.line(surface, (200, 180, 255), (x, y - coil_height), (sx, sy), 1)
 
         elif self.tower_type == "missile":
-            # Пусковая установка
             for angle_off in (-0.3, 0, 0.3):
                 a = self.anim_angle + angle_off
                 end = (x + math.cos(a) * barrel_len, y + math.sin(a) * barrel_len)
