@@ -1,6 +1,7 @@
 # icons.py — Векторная отрисовка ярких иконок (Бомба, Лёд, Золото, Кубок, Замок, Звезда)
 
 import pygame
+from fonts import get_font
 import math
 
 def draw_bomb_icon(surface, x, y, size=18):
@@ -42,7 +43,7 @@ def draw_gold_icon(surface, x, y, size=18):
     pygame.draw.circle(surface, (255, 215, 0), (cx, cy), r)
     pygame.draw.circle(surface, (200, 150, 0), (cx, cy), r, 1)
     # Знак $
-    font = pygame.font.Font(None, int(size * 0.85))
+    font = get_font(int(size * 0.85))
     txt = font.render("$", True, (120, 80, 0))
     surface.blit(txt, txt.get_rect(center=(cx, cy)))
 

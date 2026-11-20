@@ -3,6 +3,8 @@
 import json
 import os
 
+from settings import DIFFICULTY_MODIFIERS
+
 CONFIG_FILE = "config.json"
 
 # Словари перевода (RU / EN)
@@ -53,9 +55,15 @@ TRANSLATIONS = {
         "defeat": "ПОРАЖЕНИЕ",
         "you_defended": "Ты защитил базу!",
         "try_again": "Попробуй другую стратегию!",
-        "ability_airstrike": "[BOMB] Авиаудар",
-        "ability_freeze": "[ICE] Заморозка",
-        "ability_gold": "[GOLD] Лихорадка",
+        "wave_cleared": "Волна {wave} пройдена! +{bonus} зол.",
+        "airstrike_used": "АВИАУДАР!",
+        "freeze_used": "ЗАМОРОЗКА!",
+        "gold_used": "ЗОЛОТАЯ ЛИХОРАДКА!",
+        "tower_upgraded": "УЛУЧШЕНО!",
+        "life_lost": "−1 ЖИЗНЬ!",
+        "ability_airstrike": "Авиаудар",
+        "ability_freeze": "Заморозка",
+        "ability_gold": "Лихорадка",
         "hint_upgrade": "💡 Кликни по башне на карте для меню прокачки",
         "controls": "Управление:",
         "controls_1": "1-8 — Выбор башни  |  Q, W, E — Способности",
@@ -108,9 +116,15 @@ TRANSLATIONS = {
         "defeat": "DEFEAT",
         "you_defended": "Base defended successfully!",
         "try_again": "Try another strategy!",
-        "ability_airstrike": "[BOMB] Airstrike",
-        "ability_freeze": "[ICE] Cryo Freeze",
-        "ability_gold": "[GOLD] Gold Rush",
+        "wave_cleared": "Wave {wave} cleared! +{bonus}g",
+        "airstrike_used": "AIRSTRIKE!",
+        "freeze_used": "FROZEN!",
+        "gold_used": "GOLD RUSH!",
+        "tower_upgraded": "UPGRADE!",
+        "life_lost": "−1 HP!",
+        "ability_airstrike": "Airstrike",
+        "ability_freeze": "Cryo Freeze",
+        "ability_gold": "Gold Rush",
         "hint_upgrade": "💡 Click tower on map to upgrade or sell",
         "controls": "Controls:",
         "controls_1": "1-8 — Select tower  |  Q, W, E — Abilities",
@@ -138,6 +152,8 @@ class ConfigManager:
                     self.language = data.get("language", "ru")
                     self.volume = float(data.get("volume", 0.5))
                     self.difficulty = int(data.get("difficulty", 1))
+                    if self.difficulty not in DIFFICULTY_MODIFIERS:
+                        self.difficulty = 1
             except Exception as e:
                 print(f"Ошибка загрузки config.json: {e}")
 

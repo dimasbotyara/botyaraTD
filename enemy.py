@@ -3,7 +3,9 @@
 import pygame
 import math
 import random
-from settings import *
+from settings import (
+    ENEMY_COLORS, ENEMY_STATS, FPS, HP_BG, HP_GREEN, HP_RED, HP_YELLOW,
+)
 
 
 class Enemy:
@@ -138,7 +140,7 @@ class Enemy:
         # Яд
         if self.poison_timer > 0:
             self.poison_timer -= 1
-            self.hp -= self.poison_dps / 60  # урон в секунду -> урон в кадр
+            self.hp -= self.poison_dps / FPS  # DPS на один шаг симуляции (включая скорость ×3)
             self.is_poisoned_visual = True
             if self.hp <= 0:
                 self.hp = 0

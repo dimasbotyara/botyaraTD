@@ -1,7 +1,5 @@
 # wave.py — Система волн врагов
 
-from settings import MAX_WAVES
-
 
 def get_wave(wave_num):
     """

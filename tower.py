@@ -2,7 +2,10 @@
 
 import pygame
 import math
-from settings import *
+from settings import (
+    CELL_SIZE, GAME_HEIGHT, GAME_WIDTH, GOLD_COLOR, SELL_RATIO, TOWER_COLORS,
+    TOWER_COLORS_DARK, TOWER_STATS,
+)
 from projectile import Projectile
 from sound import sound_manager
 

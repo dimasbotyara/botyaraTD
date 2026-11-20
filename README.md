@@ -44,6 +44,11 @@ Three cooldown-based abilities with bright vector icons:
 | `W` | ❄️ Cryo Freeze | 50g | 30s | Slows all enemies on screen for 5 seconds |
 | `E` | 💰 Gold Rush | free | 40s | +150 gold instantly |
 
+Cooldowns are measured in **game-time seconds** and advance only during an active
+wave. Abilities cannot be used between waves or while paused. At ×3 speed,
+45 game-time seconds take 15 real seconds. Pause freezes the simulation, including
+poison and cooldowns. Simulation steps are independent of rendering frame time.
+
 ### 👾 10 Enemy Types
 Each with unique behavior:
 
@@ -66,8 +71,22 @@ Chosen in settings:
 - **Easy** — more gold, fewer enemies
 - **Normal** — balanced
 - **Hard** — less gold, stronger enemies
+- **Expert** — larger waves, tougher enemies, lower income
+- **Apocalypse** — double-size waves and the strongest enemies, minimal income
 
-Affects enemy HP, rewards, wave size, and difficulty scaling.
+All five presets live in `DIFFICULTY_MODIFIERS` in `settings.py`:
+
+| Preset | Wave size | Wave scaling | Enemy HP | Kill reward | Wave bonus |
+|--------|-----------|--------------|----------|-------------|------------|
+| Easy | ×0.75 | ×1.0 | ×0.8 | ×1.3 | ×1.5 |
+| Normal | ×1.0 | ×1.0 | ×1.0 | ×1.0 | ×1.0 |
+| Hard | ×1.25 | ×1.3 | ×1.2 | ×0.8 | ×0.7 |
+| Expert | ×1.5 | ×1.5 | ×1.5 | ×0.7 | ×0.6 |
+| Apocalypse | ×2.0 | ×1.8 | ×2.0 | ×0.6 | ×0.5 |
+
+Wave scaling multiplies the wave number before the existing HP growth formula;
+the enemy HP multiplier is applied afterward. Counts and gold rewards round down
+(waves contain at least three enemies). Easy/Normal/Hard keep their previous balance.
 
 ### 🎨 Juicy Visual Effects
 All in `effects.py`, easy to tweak:
@@ -84,9 +103,17 @@ All in `effects.py`, easy to tweak:
 - **Procedurally synthesized** sounds for the machine gun, gold pickup, and airstrike (generated on-the-fly with `array`)
 - **External audio support** — drop `.wav` / `.mp3` / `.ogg` files into `sounds/` with names like `sniper.wav`, `explosion.mp3`, `victory.ogg` and they'll be auto-loaded
 - Volume control in settings (0–100% in 25% steps)
+- Missing or unreadable external sounds are listed in one startup warning; the
+  game stays playable with those effects silent.
 
 ### 🌍 Bilingual (RU / EN)
-Full interface translation, switchable in settings, saved to `config.json`.
+RU/EN interface translations, switchable in settings and saved to `config.json`,
+including wave-clear, upgrade, life-loss, and ability popups. Ability labels and
+popups use vector icons instead of `[BOMB]` / `[ICE]` / `[GOLD]` prefixes.
+
+Noto Sans and monochrome Noto Emoji are bundled in `assets/fonts/`, with licenses
+and source links. Cyrillic and the game's emoji render offline on all platforms;
+no system-font installation is required. Emoji use the surrounding text color.
 
 ### 💾 Persistent Progress
 - `config.json` — language, volume, difficulty
@@ -159,6 +186,9 @@ botyaraTD/
 ├── wave.py              # Wave compositions (25 waves, hand-tuned)
 ├── effects.py           # Particles, shockwaves, beams, screen shake
 ├── ui.py                # All menus, sidebar, level select, in-world menus
+├── fonts.py             # Cached text fonts with emoji fallback
+├── assets/fonts/        # Offline Noto fonts, licenses, and source links
+├── tests/               # Headless regression tests
 ├── icons.py             # Vector icons (bomb, ice, gold, trophy, lock, star)
 ├── sound.py             # Procedural + external sound manager
 ├── config.py            # Settings persistence (RU/EN translations)
@@ -182,6 +212,7 @@ SELL_RATIO = 0.6          # Refund percentage
 
 TOWER_STATS = { ... }     # Damage, range, cost, special effects per level
 ENEMY_STATS = { ... }     # HP, speed, reward, special traits
+DIFFICULTY_MODIFIERS = { ... }  # All five difficulty presets
 ```
 
 Wave compositions live in **`wave.py`** — edit `get_wave(n)` to change any wave.
@@ -189,6 +220,21 @@ Wave compositions live in **`wave.py`** — edit `get_wave(n)` to change any wav
 Levels live in **`map_data.py`** — edit the `grid` arrays or add a new `LEVEL_DATA` entry.
 
 Custom sounds: drop a file named after the tower/event into `sounds/`. No code changes needed. See `sounds/license.txt` for licensing of bundled assets.
+
+---
+
+## 🧪 Checks
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest -q
+python -m pyflakes *.py tests
+```
+
+Tests use SDL's dummy video/audio drivers, so no display or speakers are needed.
+They cover all five difficulties, frame-time-independent updates, poison at ×1
+and ×3, cooldown gating, RU/EN popups, vector icons, offline fonts, and sound
+warnings. Tests do not write player settings or progress.
 
 ---
 
