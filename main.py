@@ -35,7 +35,7 @@ class Game:
         self.state = "menu"
         self.hidden = False
 
-        # Выбранный уровень (0..4)
+        # Выбранный уровень (индекс в LEVEL_DATA)
         self.current_level = 0
 
         # UI Экранные компоненты
@@ -124,16 +124,7 @@ class Game:
                         gx = x + random.randint(5, CELL_SIZE - 5)
                         gy = y + random.randint(5, CELL_SIZE - 5)
                         gl = random.randint(2, 5)
-                        if self.current_level == 0:
-                            gc = (35, 130, 50)
-                        elif self.current_level == 1:
-                            gc = (180, 130, 70)
-                        elif self.current_level == 2:
-                            gc = (220, 240, 255)
-                        elif self.current_level == 3:
-                            gc = (0, 180, 220)
-                        else:
-                            gc = (120, 30, 20)
+                        gc = self.level_info.get("detail_color", bg_alt)
                         pygame.draw.line(self.map_surface, gc, (gx, gy), (gx + random.randint(-2, 2), gy - gl), 1)
 
                 elif cell in (1, 2, 3):
@@ -721,6 +712,8 @@ class Game:
                         self.settings_menu.toggle_volume()
                     elif self.settings_menu.diff_btn.is_clicked(mouse_pos, True):
                         self.settings_menu.toggle_difficulty()
+                    elif self.settings_menu.shake_btn.is_clicked(mouse_pos, True):
+                        self.settings_menu.toggle_screen_shake()
                     elif self.settings_menu.back_btn.is_clicked(mouse_pos, True):
                         self.state = "menu"
 
@@ -769,6 +762,7 @@ class Game:
                 self.draw_game()
                 self.game_over_screen.draw(self.screen, self.game_won, self.wave_num, self.kills)
 
+            sound_manager.update()
             pygame.display.flip()
 
         pygame.quit()

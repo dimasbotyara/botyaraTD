@@ -207,9 +207,12 @@ def test_external_sound_still_loads(tmp_path, monkeypatch, caplog):
     external = Mock()
     monkeypatch.setattr(sound, "SOUNDS_DIR", tmp_path)
     monkeypatch.setattr(pygame.mixer, "Sound", lambda *args, **kwargs: external)
+    channel = Mock()
+    channel.get_busy.return_value = False
+    monkeypatch.setattr(pygame.mixer, "Channel", lambda index: channel)
     manager = sound.SoundManager()
     manager.play("sniper")
-    external.play.assert_called_once()
+    channel.play.assert_called_once_with(external)
     assert "sniper" not in caplog.records[-1].message
 
 

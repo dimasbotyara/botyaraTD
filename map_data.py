@@ -1,6 +1,7 @@
-# map_data.py — Карта и путь врагов для 5 уникальных уровней
+# map_data.py — Карта и путь врагов для кампании
 
-from settings import CELL_SIZE
+from config import config_manager
+from settings import CELL_SIZE, GRID_COLS, GRID_ROWS
 
 # 0 = декор/трава (можно ставить башни)
 # 1 = дорога (путь врагов)
@@ -159,10 +160,58 @@ MAP_5_GRID = [
 ]
 
 
-# Определение 5 уровней с уникальной тематикой
+def _grid_from_waypoints(waypoints):
+    """Собрать дорожку из заданных вручную горизонтальных/вертикальных отрезков."""
+    grid = [[0] * GRID_COLS for _ in range(GRID_ROWS)]
+    cells = [waypoints[0]]
+    for (x, y), (end_x, end_y) in zip(waypoints, waypoints[1:]):
+        if (x == end_x) == (y == end_y):
+            raise ValueError("Waypoints must define non-empty axis-aligned segments")
+        dx = (end_x > x) - (end_x < x)
+        dy = (end_y > y) - (end_y < y)
+        while (x, y) != (end_x, end_y):
+            x, y = x + dx, y + dy
+            cells.append((x, y))
+    for x, y in cells:
+        if not (0 <= x < GRID_COLS and 0 <= y < GRID_ROWS):
+            raise ValueError("Path leaves the map")
+        if grid[y][x]:
+            raise ValueError("Path crosses itself")
+        grid[y][x] = 1
+    start_x, start_y = cells[0]
+    end_x, end_y = cells[-1]
+    grid[start_y][start_x] = 2
+    grid[end_y][end_x] = 3
+    return grid
+
+
+# === КАРТА 6: Туманные болота — широкие петли вокруг островков ===
+MAP_6_GRID = _grid_from_waypoints([
+    (0, 3), (6, 3), (6, 7), (2, 7), (2, 13), (12, 13),
+    (12, 5), (18, 5), (18, 15), (22, 15),
+])
+
+# === КАРТА 7: Кристальный лабиринт — спираль к базе в центре ===
+MAP_7_GRID = _grid_from_waypoints([
+    (0, 14), (4, 14), (4, 2), (20, 2), (20, 12), (8, 12),
+    (8, 6), (16, 6), (16, 9), (12, 9),
+])
+
+# === КАРТА 8: Орбитальный порт — вертикальные доки и узкие повороты ===
+MAP_8_GRID = _grid_from_waypoints([
+    (0, 8), (3, 8), (3, 2), (10, 2), (10, 6), (7, 6),
+    (7, 14), (16, 14), (16, 3), (21, 3), (21, 10), (19, 10),
+])
+
+
+# Определение уровней с уникальной тематикой
 LEVEL_DATA = [
     {
         "id": 1,
+        "name_en": "1. Green Meadow",
+        "desc_en": "A winding valley with plenty of room for a first defense.",
+        "difficulty": 0,
+        "detail_color": (35, 130, 50),
         "name": "1. Зелёный Луг",
         "diff": "Легко",
         "desc": "Уютная долина. Отличное место для знакомства с тактикой обороны.",
@@ -174,6 +223,10 @@ LEVEL_DATA = [
     },
     {
         "id": 2,
+        "name_en": "2. Sand Canyon",
+        "desc_en": "Long desert spirals around a sheltered central base.",
+        "difficulty": 1,
+        "detail_color": (180, 130, 70),
         "name": "2. Песчаный Каньон",
         "diff": "Нормально",
         "desc": "Знойные пустынные спирали. Враги долго ходят по кругу!",
@@ -185,6 +238,10 @@ LEVEL_DATA = [
     },
     {
         "id": 3,
+        "name_en": "3. Ice Peak",
+        "desc_en": "A frozen pass with nested loops and tight firing lanes.",
+        "difficulty": 2,
+        "detail_color": (220, 240, 255),
         "name": "3. Ледяной Пик",
         "diff": "Сложно",
         "desc": "Замерзший перевал. Заморозка башен действует эффективнее!",
@@ -196,6 +253,10 @@ LEVEL_DATA = [
     },
     {
         "id": 4,
+        "name_en": "4. Neon City",
+        "desc_en": "City blocks, sharp corners and long firing lanes.",
+        "difficulty": 3,
+        "detail_color": (0, 180, 220),
         "name": "4. Неоновый Сити",
         "diff": "Эксперт",
         "desc": "Кибернетический мегаполис. Враги двигаются со скоростной атакой.",
@@ -207,6 +268,10 @@ LEVEL_DATA = [
     },
     {
         "id": 5,
+        "name_en": "5. Volcano of Death",
+        "desc_en": "Lava switchbacks. Cover several lanes with each tower.",
+        "difficulty": 4,
+        "detail_color": (120, 30, 20),
         "name": "5. Вулкан Смерти",
         "diff": "Апокалипсис",
         "desc": "Лавовая цитадель. Короткие прямые и наплывы гигантских Боссов!",
@@ -215,6 +280,51 @@ LEVEL_DATA = [
         "path_color": (160, 50, 30),
         "border_color": (240, 100, 30),
         "grid": MAP_5_GRID,
+    },
+    {
+        "id": 6,
+        "name": "6. Туманные болота",
+        "name_en": "6. Misty Marsh",
+        "difficulty": 2,
+        "diff": "Сложно",
+        "desc": "Петли среди болот. Островки для перекрёстного огня.",
+        "desc_en": "Marsh loops and islands for overlapping fields of fire.",
+        "bg_color": (30, 65, 62),
+        "bg_alt": (37, 79, 70),
+        "detail_color": (80, 140, 110),
+        "path_color": (95, 105, 75),
+        "border_color": (115, 180, 130),
+        "grid": MAP_6_GRID,
+    },
+    {
+        "id": 7,
+        "name": "7. Кристальный лабиринт",
+        "name_en": "7. Crystal Maze",
+        "difficulty": 3,
+        "diff": "Эксперт",
+        "desc": "Спираль к центру. Прикройте внутренние повороты!",
+        "desc_en": "A spiral to the core. Cover the inner turns!",
+        "bg_color": (55, 35, 90),
+        "bg_alt": (68, 43, 107),
+        "detail_color": (160, 115, 215),
+        "path_color": (105, 105, 155),
+        "border_color": (185, 160, 245),
+        "grid": MAP_7_GRID,
+    },
+    {
+        "id": 8,
+        "name": "8. Орбитальный порт",
+        "name_en": "8. Orbital Port",
+        "difficulty": 4,
+        "diff": "Апокалипсис",
+        "desc": "Длинные доки. Найдите позиции между коридорами.",
+        "desc_en": "Long docks. Find tower positions between the lanes.",
+        "bg_color": (30, 40, 60),
+        "bg_alt": (38, 50, 73),
+        "detail_color": (90, 140, 185),
+        "path_color": (100, 115, 130),
+        "border_color": (235, 175, 70),
+        "grid": MAP_8_GRID,
     },
 ]
 
@@ -228,7 +338,12 @@ for idx, lvl in enumerate(LEVEL_DATA):
 def get_level_info(level_idx=0):
     """Получить словарь информации об уровне"""
     idx = max(0, min(len(LEVEL_DATA) - 1, level_idx))
-    return LEVEL_DATA[idx]
+    info = dict(LEVEL_DATA[idx])
+    if config_manager.language == "en":
+        info["name"] = info.get("name_en", info["name"])
+        info["desc"] = info.get("desc_en", info["desc"])
+        info["diff"] = config_manager.t(f"diff_{info['difficulty']}")
+    return info
 
 
 def get_map(level_idx=0):
