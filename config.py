@@ -11,7 +11,7 @@ CONFIG_FILE = "config.json"
 TRANSLATIONS = {
     "ru": {
         "title": "botyaraTD",
-        "subtitle": "Deluxe Edition & 5 Уровней",
+        "subtitle": "Deluxe Edition & {levels} Уровней",
         "play": "ВЫБОР УРОВНЯ",
         "settings": "НАСТРОЙКИ",
         "quit": "ВЫХОД",
@@ -29,6 +29,9 @@ TRANSLATIONS = {
         "diff_desc_1": "Стандартный баланс",
         "diff_desc_2": "Меньше золота, враги сильнее",
         "volume": "Громкость",
+        "screen_shake": "Тряска экрана",
+        "on": "Вкл",
+        "off": "Выкл",
         "language": "Язык / Language",
         "wave": "Волна",
         "lives": "Жизни",
@@ -72,7 +75,7 @@ TRANSLATIONS = {
     },
     "en": {
         "title": "botyaraTD",
-        "subtitle": "Deluxe Edition & 5 Levels",
+        "subtitle": "Deluxe Edition & {levels} Levels",
         "play": "SELECT LEVEL",
         "settings": "SETTINGS",
         "quit": "QUIT",
@@ -90,6 +93,9 @@ TRANSLATIONS = {
         "diff_desc_1": "Balanced difficulty",
         "diff_desc_2": "Less gold, stronger enemies",
         "volume": "Volume",
+        "screen_shake": "Screen shake",
+        "on": "On",
+        "off": "Off",
         "language": "Language / Язык",
         "wave": "Wave",
         "lives": "Lives",
@@ -141,6 +147,7 @@ class ConfigManager:
         self.language = "ru"  # "ru" или "en"
         self.volume = 0.5
         self.difficulty = 1
+        self.screen_shake = True
         self.load_config()
 
     def load_config(self):
@@ -149,6 +156,7 @@ class ConfigManager:
             try:
                 with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                     data = json.load(f)
+                    self.screen_shake = data.get("screen_shake", True) is not False
                     self.language = data.get("language", "ru")
                     self.volume = float(data.get("volume", 0.5))
                     self.difficulty = int(data.get("difficulty", 1))
@@ -164,6 +172,7 @@ class ConfigManager:
                 "language": self.language,
                 "volume": self.volume,
                 "difficulty": self.difficulty,
+                "screen_shake": self.screen_shake,
             }
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)

@@ -1,6 +1,7 @@
 # effects.py — Частицы, взрывы, визуальные эффекты и тряска экрана
 
 import pygame
+from config import config_manager
 from fonts import get_font
 from icons import draw_bomb_icon, draw_ice_icon, draw_gold_icon
 
@@ -200,10 +201,16 @@ class EffectsManager:
 
     def add_shake(self, amount):
         """Добавить силу тряски экрана"""
-        self.shake_amount = min(20.0, self.shake_amount + amount)
+        if config_manager.screen_shake:
+            self.shake_amount = min(20.0, self.shake_amount + amount)
+        else:
+            self.shake_amount = 0
 
     def get_shake_offset(self):
         """Смещение камеры для отрисовки кадра"""
+        if not config_manager.screen_shake:
+            self.shake_amount = 0
+            return 0, 0
         if self.shake_amount > 0.5:
             ox = random.uniform(-self.shake_amount, self.shake_amount)
             oy = random.uniform(-self.shake_amount, self.shake_amount)

@@ -3,10 +3,12 @@
 import json
 import os
 
+from map_data import LEVEL_DATA
+
 HIGHSCORES_FILE = "highscores.json"
 
 class HighscoreManager:
-    """Управление рекордами для всех 5 уровней"""
+    """Управление рекордами для всех уровней кампании"""
     
     def __init__(self):
         self.scores = self.load_scores()
@@ -24,7 +26,7 @@ class HighscoreManager:
         # Дефолтные рекорды
         return {
             str(i): {"best_wave": 0, "best_kills": 0, "completed": False}
-            for i in range(5)
+            for i in range(len(LEVEL_DATA))
         }
 
     def save_scores(self):
@@ -36,7 +38,7 @@ class HighscoreManager:
             print(f"Ошибка сохранения рекордов: {e}")
 
     def get_score(self, level_idx):
-        """Получить рекорд для уровня (0..4)"""
+        """Получить рекорд для уровня"""
         key = str(level_idx)
         return self.scores.get(key, {"best_wave": 0, "best_kills": 0, "completed": False})
 

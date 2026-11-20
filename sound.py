@@ -7,20 +7,34 @@ import array
 import logging
 from pathlib import Path
 
+from config import config_manager
+
 SOUNDS_DIR = Path(__file__).resolve().parent / "sounds"
 logger = logging.getLogger(__name__)
 
 class SoundManager:
     """Менеджер звуковых эффектов: гибридный синтезатор + загрузка внешних wav/mp3/ogg"""
 
+    MAX_CHANNELS = 8
+    # Интервалы в реальных мс: скорость симуляции не увеличивает частоту звука.
+    REPEAT_INTERVAL_MS = {"machinegun": 60, "gold": 100, "laser": 100,
+                          "hit": 60, "explosion": 100, "airstrike": 250}
+
     def __init__(self):
-        self.enabled = True
-        self.volume = 0.5
+        self.enabled = False
+        self.volume = max(0.0, min(1.0, config_manager.volume))
         self.sounds = {}
+        self.channels = []
+        self._last_played = {}
+        self._audio_ready = False
 
         try:
             pygame.mixer.init(frequency=22050, size=-16, channels=1, buffer=512)
+            pygame.mixer.set_num_channels(self.MAX_CHANNELS)
+            self.channels = [pygame.mixer.Channel(i) for i in range(self.MAX_CHANNELS)]
             self._load_all_sounds()
+            self._audio_ready = True
+            self.enabled = self.volume > 0
         except Exception as e:
             print(f"Предупреждение: Не удалось инициализировать аудио: {e}")
             self.enabled = False
@@ -34,7 +48,7 @@ class SoundManager:
         for i in range(n_samples):
             t = i / sample_rate
             val = waveform_fn(t, duration)
-            val_int = int(max(-32768, min(32767, val * 32767 * self.volume)))
+            val_int = int(max(-32768, min(32767, val * 32767)))
             buf.append(val_int)
 
         return pygame.mixer.Sound(buffer=buf)
@@ -98,30 +112,46 @@ class SoundManager:
             logger.warning("Отсутствуют или не загрузились звуки в %s: %s",
                            SOUNDS_DIR, ", ".join(missing))
 
-    def play(self, sound_name):
-        """Воспроизвести звук по названию"""
-        if not self.enabled or sound_name not in self.sounds:
+    def _set_channel_gains(self, active):
+        # Суммарный gain не превышает master volume даже при совпадении пиков.
+        gain = self.volume / max(1, len(active))
+        for channel in active:
+            channel.set_volume(gain)
+
+    def update(self):
+        """Пересчитать уровень после завершения коротких эффектов (раз в кадр)."""
+        if not self._audio_ready:
             return
+        self._set_channel_gains([channel for channel in self.channels if channel.get_busy()])
+
+    def play(self, sound_name):
+        """Ограничить повторы и тихо смешать одновременно звучащие эффекты."""
         snd = self.sounds.get(sound_name)
-        if snd is not None:
-            try:
-                snd.play()
-            except Exception:
-                pass
+        if not self.enabled or snd is None:
+            return
+        now = pygame.time.get_ticks()
+        interval = self.REPEAT_INTERVAL_MS.get(sound_name, 40)
+        last = self._last_played.get(sound_name)
+        if last is not None and now - last < interval:
+            return
+        active = [channel for channel in self.channels if channel.get_busy()]
+        free = next((channel for channel in self.channels if channel not in active), None)
+        if free is None:
+            return  # Не обрываем существующие звуки и не создаём неограниченный хор.
+        try:
+            # Приглушаем все каналы ДО старта нового, чтобы не было громкого пика.
+            self._set_channel_gains(active + [free])
+            free.play(snd)
+            self._last_played[sound_name] = now
+        except pygame.error:
+            self.update()
 
     def set_volume(self, volume):
-        """Установить громкость 0.0 .. 1.0"""
+        """Master volume применяется один раз, одинаково к синтезу и файлам."""
         self.volume = max(0.0, min(1.0, volume))
-        if self.volume == 0:
-            self.enabled = False
-        else:
-            self.enabled = True
-            for sound in self.sounds.values():
-                if sound is not None:
-                    try:
-                        sound.set_volume(self.volume)
-                    except Exception:
-                        pass
+        self.enabled = self._audio_ready and self.volume > 0
+        self.update()
+
 
 # Глобальный экземпляр
 sound_manager = SoundManager()

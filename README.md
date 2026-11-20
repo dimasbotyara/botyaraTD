@@ -1,6 +1,6 @@
 # 🏰 botyaraTD
 
-> **A juicy, feature-packed Tower Defense built with Pygame.** 5 levels, 8 tower types, 10 enemy types, super abilities, and enough particles to make your GPU sweat.
+> **A juicy, feature-packed Tower Defense built with Pygame.** 8 levels, 8 tower types, 10 enemy types, super abilities, and enough particles to make your GPU sweat.
 
 A complete tower defense game with a campaign, upgradeable towers, super abilities, progressive waves, and a slick UI — all in pure Pygame, no external engine.
 
@@ -8,7 +8,7 @@ A complete tower defense game with a campaign, upgradeable towers, super abiliti
 
 ## ✨ Features
 
-### 🎯 Campaign — 5 Unique Levels
+### 🎯 Campaign — 8 Unique Levels
 Each level has its own hand-crafted map, palette, and atmosphere:
 
 | # | Level | Difficulty | Vibe |
@@ -18,8 +18,12 @@ Each level has its own hand-crafted map, palette, and atmosphere:
 | 3 | ❄️ Ice Peak | Hard | Frozen pass, freeze towers shine |
 | 4 | 🌃 Neon City | Expert | Cyberpunk grid, fast attackers |
 | 5 | 🌋 Volcano of Death | Apocalypse | Lava citadel, boss rushes |
+| 6 | Misty Marsh | Hard | Wide marsh loops and islands for crossfire |
+| 7 | Crystal Maze | Expert | A spiral leading to a central base |
+| 8 | Orbital Port | Apocalypse | Long vertical docks and narrow turns |
 
-Levels unlock progressively — complete one to unlock the next. Beat all 5 to win the campaign.
+Levels unlock progressively — complete one to unlock the next. Beat all 8 to win the campaign. Existing five-level saves keep their progress;
+completing Volcano of Death unlocks Misty Marsh.
 
 ### 🗼 8 Tower Types × 3 Upgrade Levels
 Every tower has three tiers, and each tier changes its **damage, fire rate, range, and special effects**:
@@ -96,13 +100,20 @@ All in `effects.py`, easy to tweak:
 - 💬 **Floating damage numbers** and gold popups
 - ⚡ **Lightning bolts** for Tesla tower (procedurally jittered)
 - 🔫 **Laser beams** with glow
-- 📳 **Screen shake** for explosions, airstrikes, and enemy leaks
+- 📳 **Screen shake** for explosions, airstrikes, and enemy leaks — can be disabled
+  in Settings (saved between launches); particles and explosions stay visible.
 - ✨ **Pulsing UI elements**, tower recoil, muzzle flashes
 
 ### 🔊 Hybrid Sound System
 - **Procedurally synthesized** sounds for the machine gun, gold pickup, and airstrike (generated on-the-fly with `array`)
 - **External audio support** — drop `.wav` / `.mp3` / `.ogg` files into `sounds/` with names like `sniper.wav`, `explosion.mp3`, `victory.ogg` and they'll be auto-loaded
-- Volume control in settings (0–100% in 25% steps)
+- Volume control in settings (0–100% in 25% steps), restored at startup and applied
+  once to both generated and external effects
+- Up to eight concurrent effects, with automatic attenuation: active channels
+  share the master-volume budget rather than all playing at full volume
+- Repeated effects are rate-limited in **real milliseconds**, not simulation
+  ticks (machine gun: 60 ms; gold: 100 ms). At ×3 this prevents rapid-fire sound
+  pileups; excess sounds are skipped without interrupting already playing ones.
 - Missing or unreadable external sounds are listed in one startup warning; the
   game stays playable with those effects silent.
 
@@ -116,7 +127,7 @@ and source links. Cyrillic and the game's emoji render offline on all platforms;
 no system-font installation is required. Emoji use the surrounding text color.
 
 ### 💾 Persistent Progress
-- `config.json` — language, volume, difficulty
+- `config.json` — language, volume, difficulty, screen-shake toggle
 - `highscores.json` — best wave, best kills, completion status per level
 - Level unlocking tied to completion
 
@@ -179,7 +190,7 @@ Or use the launch scripts — `run.sh` (Linux/macOS), `run.bat` (Windows CMD), o
 botyaraTD/
 ├── main.py              # 🎯 Game class, main loop, state machine
 ├── settings.py          # Constants, tower/enemy stats, colors, balance
-├── map_data.py          # 5 hand-crafted levels, path auto-generation
+├── map_data.py          # 8 hand-crafted levels, path auto-generation
 ├── tower.py             # Tower classes, targeting, shooting, recoil
 ├── enemy.py             # Enemy classes, status effects, special behaviors
 ├── projectile.py        # Bullets, missiles, sniper shots, splash logic
@@ -234,7 +245,9 @@ python -m pyflakes *.py tests
 Tests use SDL's dummy video/audio drivers, so no display or speakers are needed.
 They cover all five difficulties, frame-time-independent updates, poison at ×1
 and ×3, cooldown gating, RU/EN popups, vector icons, offline fonts, and sound
-warnings. Tests do not write player settings or progress.
+warnings, persisted screen-shake settings, sound limiting, new-map path validity,
+and campaign-save compatibility. Tests do not write player settings or progress
+outside temporary test directories.
 
 ---
 

@@ -25,6 +25,8 @@ def pygame_session():
 def isolate_settings(monkeypatch):
     monkeypatch.setattr(config_manager, "difficulty", 1)
     monkeypatch.setattr(config_manager, "language", "ru")
+    monkeypatch.setattr(config_manager, "screen_shake", True)
+    monkeypatch.setattr(config_manager, "volume", 0.5)
     monkeypatch.setattr(config_manager, "save_config", lambda: None)
     monkeypatch.setattr(highscore_manager, "update_score", lambda *args: None)
 

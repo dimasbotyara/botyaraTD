@@ -10,7 +10,7 @@ from settings import (
     SIDEBAR_WIDTH, START_LIVES, TOWER_COLORS, TOWER_COLORS_DARK, TOWER_STATS, UI_BG,
     UI_BORDER, UI_HOVER, UI_PANEL, UI_SELECTED, WHITE, WINDOW_HEIGHT, WINDOW_WIDTH,
 )
-from map_data import LEVEL_DATA
+from map_data import LEVEL_DATA, get_level_info
 from sound import sound_manager
 from highscores import highscore_manager
 from config import t, config_manager
@@ -505,7 +505,7 @@ class LevelSelectMenu:
         title = self.title_font.render(t("level_select"), True, WHITE)
         surface.blit(title, (WINDOW_WIDTH // 2 - title.get_width() // 2, 25))
 
-        lvl_info = LEVEL_DATA[self.selected_level]
+        lvl_info = get_level_info(self.selected_level)
         score_info = highscore_manager.get_score(self.selected_level)
         is_unlocked = highscore_manager.is_level_unlocked(self.selected_level)
 
@@ -518,7 +518,7 @@ class LevelSelectMenu:
         name_surf = self.card_title_font.render(lvl_info["name"], True, WHITE if is_unlocked else GRAY)
         surface.blit(name_surf, (card.centerx - name_surf.get_width() // 2, card.y + 15))
 
-        diff_key = f"diff_{self.selected_level}"
+        diff_key = f"diff_{lvl_info['difficulty']}"
         diff_str = t(diff_key)
         diff_surf = self.diff_font.render(f"{t('difficulty')}: {diff_str}", True, GOLD_COLOR if is_unlocked else GRAY)
         surface.blit(diff_surf, (card.centerx - diff_surf.get_width() // 2, card.y + 50))
@@ -649,7 +649,7 @@ class MainMenu:
         title_surf = self.title_font.render(title_text, True, (r, g, b))
         surface.blit(title_surf, (WINDOW_WIDTH // 2 - title_surf.get_width() // 2, 100))
 
-        sub = self.subtitle_font.render(t("subtitle"), True, GRAY)
+        sub = self.subtitle_font.render(t("subtitle").format(levels=len(LEVEL_DATA)), True, GRAY)
         surface.blit(sub, (WINDOW_WIDTH // 2 - sub.get_width() // 2, 175))
 
         line_y = 220
@@ -697,8 +697,16 @@ class SettingsMenu:
                                f"{t('difficulty')}: {t(f'diff_{config_manager.difficulty}')}",
                                BTN_BLUE, BTN_BLUE_HOVER, font_size=22)
 
-        self.back_btn = Button(center_x - btn_w // 2, 450, btn_w, 45,
+        self.shake_btn = Button(center_x - btn_w // 2, 355, btn_w, 40,
+                                f"{t('screen_shake')}: {t('on' if config_manager.screen_shake else 'off')}",
+                                BTN_BLUE, BTN_BLUE_HOVER, font_size=22)
+
+        self.back_btn = Button(center_x - btn_w // 2, 540, btn_w, 45,
                                t("back"), BTN_RED, BTN_RED_HOVER, font_size=26)
+
+    def toggle_screen_shake(self):
+        config_manager.screen_shake = not config_manager.screen_shake
+        config_manager.save_config()
 
     def toggle_volume(self):
         config_manager.volume += 0.25
@@ -716,11 +724,13 @@ class SettingsMenu:
 
     def update(self, mouse_pos):
         self.lang_btn.text = f"{t('language')}: {config_manager.language.upper()}"
+        self.shake_btn.text = f"{t('screen_shake')}: {t('on' if config_manager.screen_shake else 'off')}"
         self.vol_btn.text = f"{t('volume')}: {int(config_manager.volume * 100)}%"
         self.diff_btn.text = f"{t('difficulty')}: {t(f'diff_{config_manager.difficulty}')}"
         self.back_btn.text = t("back")
 
         self.lang_btn.update(mouse_pos)
+        self.shake_btn.update(mouse_pos)
         self.vol_btn.update(mouse_pos)
         self.diff_btn.update(mouse_pos)
         self.back_btn.update(mouse_pos)
@@ -736,11 +746,12 @@ class SettingsMenu:
                          (WINDOW_WIDTH // 2 + 150, 130), 2)
 
         self.lang_btn.draw(surface)
+        self.shake_btn.draw(surface)
         self.vol_btn.draw(surface)
         self.diff_btn.draw(surface)
 
         controls_title = self.info_font.render(t("controls"), True, LIGHT_GRAY)
-        surface.blit(controls_title, (WINDOW_WIDTH // 2 - controls_title.get_width() // 2, 355))
+        surface.blit(controls_title, (WINDOW_WIDTH // 2 - controls_title.get_width() // 2, 420))
 
         controls = [
             t("controls_1"),
@@ -749,7 +760,7 @@ class SettingsMenu:
         ]
         for i, ctrl in enumerate(controls):
             c_surf = self.small_font.render(ctrl, True, GRAY)
-            surface.blit(c_surf, (WINDOW_WIDTH // 2 - c_surf.get_width() // 2, 385 + i * 20))
+            surface.blit(c_surf, (WINDOW_WIDTH // 2 - c_surf.get_width() // 2, 455 + i * 22))
 
         self.back_btn.draw(surface)
 
