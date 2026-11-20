@@ -6,11 +6,14 @@ import math
 import random
 import ctypes
 
-from settings import *
-from map_data import get_path, get_map, is_buildable, get_level_info, LEVEL_DATA
+from settings import (
+    CELL_SIZE, DIFFICULTY_MODIFIERS, FPS, GAME_HEIGHT, GAME_WIDTH, HIDE_KEY, MAX_WAVES,
+    PAUSE_KEY, SPEED_FAST, SPEED_NORMAL, START_GOLD, START_LIVES, TITLE, TOWER_COLORS,
+    TOWER_STATS, WINDOW_HEIGHT, WINDOW_WIDTH,
+)
+from map_data import get_path, get_map, is_buildable, get_level_info
 from tower import Tower
 from enemy import Enemy
-from projectile import Projectile
 from wave import get_wave
 from effects import EffectsManager
 from ui import (Sidebar, MainMenu, SettingsMenu, PauseMenu, GameOverScreen, LevelSelectMenu, InWorldTowerMenu)
@@ -73,16 +76,17 @@ class Game:
         self.wave_queue = []
         self.spawn_timer = 0
         self.game_speed = SPEED_NORMAL
+        self._tick_accumulator_ms = 0.0
         self.kills = 0
         self.game_won = False
 
         # Перезарядка способностей
         self.cd_airstrike = 0
-        self.max_cd_airstrike = 2700  # 45 сек
+        self.max_cd_airstrike = 45_000  # мс игрового времени
         self.cd_freeze = 0
-        self.max_cd_freeze = 1800     # 30 сек
+        self.max_cd_freeze = 30_000
         self.cd_gold = 0
-        self.max_cd_gold = 2400       # 40 сек
+        self.max_cd_gold = 40_000
 
         self.selected_tower_type = None
         self.selected_placed_tower = None
@@ -233,36 +237,26 @@ class Game:
         self.spawn_timer = 0
         sound_manager.play("click")
 
-        difficulty = config_manager.difficulty
-        if difficulty == 0:
-            cut = max(3, len(self.wave_queue) * 3 // 4)
-            self.wave_queue = self.wave_queue[:cut]
-        elif difficulty == 2:
-            extra = len(self.wave_queue) // 4
-            for i in range(extra):
-                self.wave_queue.append(self.wave_queue[i % len(self.wave_queue)])
+        modifiers = DIFFICULTY_MODIFIERS[config_manager.difficulty]
+        if self.wave_queue:
+            original_queue = self.wave_queue
+            count = max(3, int(len(original_queue) * modifiers["enemy_count"]))
+            self.wave_queue = [original_queue[i % len(original_queue)] for i in range(count)]
 
     def spawn_enemy(self, enemy_type):
-        wave = self.wave_num
-        difficulty = config_manager.difficulty
-
-        if difficulty == 2:
-            wave = int(wave * 1.3)
-
+        modifiers = DIFFICULTY_MODIFIERS[config_manager.difficulty]
+        wave = int(self.wave_num * modifiers["wave_scale"])
         enemy = Enemy(enemy_type, self.path, wave)
-
-        if difficulty == 0:
-            enemy.hp *= 0.8
-            enemy.max_hp *= 0.8
-            enemy.reward = int(enemy.reward * 1.3)
-        elif difficulty == 2:
-            enemy.hp *= 1.2
-            enemy.max_hp *= 1.2
-            enemy.reward = int(enemy.reward * 0.8)
-
+        enemy.hp *= modifiers["hp"]
+        enemy.max_hp *= modifiers["hp"]
+        enemy.reward = int(enemy.reward * modifiers["reward"])
         self.enemies.append(enemy)
 
     def trigger_ability(self, ability_name):
+        # Не даём тратить способности или получать бесплатное золото между волнами.
+        if self.state != "playing" or not self.wave_active:
+            return
+
         if ability_name == "airstrike":
             if self.cd_airstrike <= 0 and self.gold >= 100:
                 self.gold -= 100
@@ -273,7 +267,7 @@ class Game:
                     self.effects.add_airstrike_explosion(pt[0], pt[1])
                 for enemy in self.enemies:
                     enemy.take_damage(350)
-                self.effects.add_floating_text(GAME_WIDTH//2, 100, "[BOMB] AIRSTRIKE!", (255, 100, 50), 34, 80)
+                self.effects.add_floating_text(GAME_WIDTH//2, 100, t("airstrike_used"), (255, 100, 50), 34, 80, icon="airstrike")
 
         elif ability_name == "freeze":
             if self.cd_freeze <= 0 and self.gold >= 50:
@@ -281,9 +275,9 @@ class Game:
                 self.cd_freeze = self.max_cd_freeze
                 sound_manager.play("freeze")
                 for enemy in self.enemies:
-                    enemy.apply_slow(0.85, 300)
+                    enemy.apply_slow(0.85, 5 * FPS)
                     self.effects.add_freeze_effect(enemy.x, enemy.y)
-                self.effects.add_floating_text(GAME_WIDTH//2, 100, "[ICE] FROZEN!", (100, 200, 255), 34, 80)
+                self.effects.add_floating_text(GAME_WIDTH//2, 100, t("freeze_used"), (100, 200, 255), 34, 80, icon="freeze")
 
         elif ability_name == "gold":
             if self.cd_gold <= 0:
@@ -291,7 +285,7 @@ class Game:
                 self.gold += 150
                 sound_manager.play("gold")
                 self.effects.add_gold_text(GAME_WIDTH//2, 100, 150)
-                self.effects.add_floating_text(GAME_WIDTH//2, 130, "[GOLD] GOLD RUSH!", (255, 215, 0), 34, 80)
+                self.effects.add_floating_text(GAME_WIDTH//2, 130, t("gold_used"), (255, 215, 0), 34, 80, icon="gold")
 
     def place_tower(self, col, row, tower_type):
         cost = TOWER_STATS[tower_type]["levels"][0]["cost"]
@@ -300,8 +294,8 @@ class Game:
         if not is_buildable(col, row, self.current_level):
             return False
 
-        for t in self.towers:
-            if t.col == col and t.row == row:
+        for placed_tower in self.towers:
+            if placed_tower.col == col and placed_tower.row == row:
                 return False
 
         tower = Tower(col, row, tower_type)
@@ -342,21 +336,29 @@ class Game:
 
         self.effects.add_explosion(tower.x, tower.y, TOWER_COLORS[tower.tower_type],
                                    count=15, speed=3, size=4, lifetime=25)
-        self.effects.add_floating_text(tower.x, tower.y - 25, "UPGRADE!", (255, 255, 100), 24, 50)
+        self.effects.add_floating_text(tower.x, tower.y - 25, t("tower_upgraded"), (255, 255, 100), 24, 50)
         return True
 
-    def update_game(self):
-        for _ in range(self.game_speed):
+    def update_game(self, dt_ms):
+        """Реальное время кадра -> игровое время; физика идёт фиксированными шагами."""
+        if self.state != "playing":
+            return
+        elapsed_ms = dt_ms * self.game_speed
+        if self.wave_active:
+            self.cd_airstrike = max(0, self.cd_airstrike - elapsed_ms)
+            self.cd_freeze = max(0, self.cd_freeze - elapsed_ms)
+            self.cd_gold = max(0, self.cd_gold - elapsed_ms)
+
+        self._tick_accumulator_ms += elapsed_ms
+        tick_ms = 1000 / FPS
+        while self._tick_accumulator_ms + 1e-9 >= tick_ms:
+            self._tick_accumulator_ms = max(0, self._tick_accumulator_ms - tick_ms)
             self._game_tick()
+            if self.state != "playing":
+                self._tick_accumulator_ms = 0.0
+                break
 
     def _game_tick(self):
-        if self.cd_airstrike > 0:
-            self.cd_airstrike -= 1
-        if self.cd_freeze > 0:
-            self.cd_freeze -= 1
-        if self.cd_gold > 0:
-            self.cd_gold -= 1
-
         if self.wave_active and self.wave_queue:
             self.spawn_timer -= 1
             if self.spawn_timer <= 0:
@@ -367,16 +369,13 @@ class Game:
         if self.wave_active and not self.wave_queue and not self.enemies:
             self.wave_active = False
             wave_bonus = 15 + self.wave_num * 3
-            difficulty = config_manager.difficulty
-            if difficulty == 0:
-                wave_bonus = int(wave_bonus * 1.5)
-            elif difficulty == 2:
-                wave_bonus = int(wave_bonus * 0.7)
+            modifiers = DIFFICULTY_MODIFIERS[config_manager.difficulty]
+            wave_bonus = int(wave_bonus * modifiers["wave_bonus"])
             self.gold += wave_bonus
             sound_manager.play("gold")
             self.effects.add_floating_text(
                 GAME_WIDTH // 2, GAME_HEIGHT // 2 - 40,
-                f"Wave {self.wave_num} Cleared! +{wave_bonus}g",
+                t("wave_cleared").format(wave=self.wave_num, bonus=wave_bonus),
                 (255, 215, 0), 30, 90
             )
 
@@ -398,7 +397,7 @@ class Game:
                     sound_manager.play("hurt")
                     self.effects.add_shake(4.0)
                     self.effects.add_floating_text(
-                        enemy.x, enemy.y, "-1 HP!", (255, 50, 50), 26, 60
+                        enemy.x, enemy.y, t("life_lost"), (255, 50, 50), 26, 60
                     )
                     if self.lives <= 0:
                         self.lives = 0
@@ -619,6 +618,7 @@ class Game:
 
     def run(self):
         while self.running:
+            dt_ms = self.clock.tick(FPS)
             mouse_pos = pygame.mouse.get_pos()
             mouse_click = False
             mouse_button = 0
@@ -733,7 +733,7 @@ class Game:
                 if mouse_click:
                     self.handle_game_click(mouse_pos, mouse_button)
 
-                self.update_game()
+                self.update_game(dt_ms)
 
             elif self.state == "paused":
                 self.pause_menu.update(mouse_pos)
@@ -770,7 +770,6 @@ class Game:
                 self.game_over_screen.draw(self.screen, self.game_won, self.wave_num, self.kills)
 
             pygame.display.flip()
-            self.clock.tick(FPS)
 
         pygame.quit()
         sys.exit()

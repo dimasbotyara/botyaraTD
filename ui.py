@@ -1,9 +1,16 @@
 # ui.py — Интерфейс: мультиязычность (RU/EN), векторые иконки, карусель уровней с блокировкой
 
 import pygame
+from fonts import get_font
 import math
-from settings import *
-from map_data import LEVEL_DATA, get_path
+from settings import (
+    BLACK, BTN_BLUE, BTN_BLUE_HOVER, BTN_GREEN, BTN_GREEN_HOVER, BTN_RED, BTN_RED_HOVER,
+    BTN_YELLOW, BTN_YELLOW_HOVER, CELL_SIZE, DARK_GRAY, DIFFICULTY_MODIFIERS, GAME_WIDTH,
+    GOLD_COLOR, GRAY, HP_BG, HP_GREEN, HP_RED, HP_YELLOW, LIGHT_GRAY, MAX_WAVES,
+    SIDEBAR_WIDTH, START_LIVES, TOWER_COLORS, TOWER_COLORS_DARK, TOWER_STATS, UI_BG,
+    UI_BORDER, UI_HOVER, UI_PANEL, UI_SELECTED, WHITE, WINDOW_HEIGHT, WINDOW_WIDTH,
+)
+from map_data import LEVEL_DATA
 from sound import sound_manager
 from highscores import highscore_manager
 from config import t, config_manager
@@ -21,7 +28,7 @@ class Button:
         self.color = color
         self.hover_color = hover_color
         self.text_color = text_color
-        self.font = pygame.font.Font(None, font_size)
+        self.font = get_font(font_size)
         self.border_radius = border_radius
         self.hovered = False
         self.enabled = True
@@ -74,9 +81,9 @@ class TowerButton:
         self.selected = False
         self.affordable = True
 
-        self.name_font = pygame.font.Font(None, 20)
-        self.cost_font = pygame.font.Font(None, 18)
-        self.desc_font = pygame.font.Font(None, 16)
+        self.name_font = get_font(20)
+        self.cost_font = get_font(18)
+        self.desc_font = get_font(16)
 
     def update(self, mouse_pos, gold):
         self.hovered = self.rect.collidepoint(mouse_pos)
@@ -136,7 +143,7 @@ class AbilityButton:
         self.cost = cost
         self.color = color
         self.hovered = False
-        self.font = pygame.font.Font(None, 17)
+        self.font = get_font(17)
 
     def update(self, mouse_pos):
         self.hovered = self.rect.collidepoint(mouse_pos)
@@ -160,7 +167,7 @@ class AbilityButton:
             draw_gold_icon(surface, icon_x, icon_y, 18)
 
         txt_col = WHITE if affordable else GRAY
-        disp_name = t(f"ability_{self.ability_key}").split()[-1]  # Берём чистое название без префикса
+        disp_name = t(f"ability_{self.ability_key}")
         surf = self.font.render(f"{disp_name} ({self.key_hint}) - {self.cost}g", True, txt_col)
         surface.blit(surf, (self.rect.x + 26, self.rect.y + 6))
 
@@ -177,9 +184,9 @@ class InWorldTowerMenu:
     def __init__(self):
         self.width = 210
         self.height = 70
-        self.font_title = pygame.font.Font(None, 19)
-        self.font_btn = pygame.font.Font(None, 18)
-        self.font_stat = pygame.font.Font(None, 16)
+        self.font_title = get_font(19)
+        self.font_btn = get_font(18)
+        self.font_stat = get_font(16)
         self.upgrade_hover = False
         self.sell_hover = False
 
@@ -273,10 +280,10 @@ class Sidebar:
         self.width = SIDEBAR_WIDTH
         self.height = WINDOW_HEIGHT
 
-        self.title_font = pygame.font.Font(None, 28)
-        self.info_font = pygame.font.Font(None, 22)
-        self.small_font = pygame.font.Font(None, 18)
-        self.card_font = pygame.font.Font(None, 20)
+        self.title_font = get_font(28)
+        self.info_font = get_font(22)
+        self.small_font = get_font(18)
+        self.card_font = get_font(20)
 
         self.tower_buttons = []
         tower_types = list(TOWER_STATS.keys())
@@ -440,11 +447,11 @@ class LevelSelectMenu:
     """ Карусель выбора 5 уровней с блокировкой замков и векторными иконками """
 
     def __init__(self):
-        self.title_font = pygame.font.Font(None, 65)
-        self.card_title_font = pygame.font.Font(None, 40)
-        self.diff_font = pygame.font.Font(None, 26)
-        self.desc_font = pygame.font.Font(None, 20)
-        self.score_font = pygame.font.Font(None, 22)
+        self.title_font = get_font(65)
+        self.card_title_font = get_font(40)
+        self.diff_font = get_font(26)
+        self.desc_font = get_font(20)
+        self.score_font = get_font(22)
 
         self.selected_level = 0
 
@@ -593,8 +600,8 @@ class MainMenu:
     """Главное меню"""
 
     def __init__(self):
-        self.title_font = pygame.font.Font(None, 80)
-        self.subtitle_font = pygame.font.Font(None, 30)
+        self.title_font = get_font(80)
+        self.subtitle_font = get_font(30)
 
         btn_w, btn_h = 280, 50
         center_x = WINDOW_WIDTH // 2 - btn_w // 2
@@ -671,9 +678,9 @@ class SettingsMenu:
     """Меню настроек с возможностью переключения языка и сохранности в config.json"""
 
     def __init__(self):
-        self.title_font = pygame.font.Font(None, 50)
-        self.info_font = pygame.font.Font(None, 28)
-        self.small_font = pygame.font.Font(None, 22)
+        self.title_font = get_font(50)
+        self.info_font = get_font(28)
+        self.small_font = get_font(22)
 
         center_x = WINDOW_WIDTH // 2
         btn_w = 280
@@ -701,7 +708,7 @@ class SettingsMenu:
         config_manager.save_config()
 
     def toggle_difficulty(self):
-        config_manager.difficulty = (config_manager.difficulty + 1) % 3
+        config_manager.difficulty = (config_manager.difficulty + 1) % len(DIFFICULTY_MODIFIERS)
         config_manager.save_config()
 
     def toggle_language(self):
@@ -751,8 +758,8 @@ class PauseMenu:
     """Меню паузы"""
 
     def __init__(self):
-        self.title_font = pygame.font.Font(None, 60)
-        self.info_font = pygame.font.Font(None, 24)
+        self.title_font = get_font(60)
+        self.info_font = get_font(24)
 
         center_x = WINDOW_WIDTH // 2
         btn_w = 240
@@ -793,8 +800,8 @@ class GameOverScreen:
     """Экран конца игры"""
 
     def __init__(self):
-        self.title_font = pygame.font.Font(None, 70)
-        self.info_font = pygame.font.Font(None, 30)
+        self.title_font = get_font(70)
+        self.info_font = get_font(30)
         self.timer = 0
 
         center_x = WINDOW_WIDTH // 2

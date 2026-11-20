@@ -4,8 +4,11 @@ import pygame
 import math
 import os
 import array
+import logging
+from pathlib import Path
 
-SOUNDS_DIR = "sounds"
+SOUNDS_DIR = Path(__file__).resolve().parent / "sounds"
+logger = logging.getLogger(__name__)
 
 class SoundManager:
     """Менеджер звуковых эффектов: гибридный синтезатор + загрузка внешних wav/mp3/ogg"""
@@ -75,6 +78,7 @@ class SoundManager:
         ]
 
         # Автоматическая загрузка из папки sounds/ (если файлы существуют)
+        missing = []
         for key in external_keys:
             loaded = False
             for ext in [".wav", ".mp3", ".ogg"]:
@@ -87,7 +91,12 @@ class SoundManager:
                     except Exception as e:
                         print(f"Не удалось загрузить {file_path}: {e}")
             if not loaded:
-                self.sounds[key] = None  # Заглушка, если файла пока нет
+                self.sounds[key] = None
+                missing.append(key)
+
+        if missing:
+            logger.warning("Отсутствуют или не загрузились звуки в %s: %s",
+                           SOUNDS_DIR, ", ".join(missing))
 
     def play(self, sound_name):
         """Воспроизвести звук по названию"""

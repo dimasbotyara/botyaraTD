@@ -1,6 +1,6 @@
 # map_data.py — Карта и путь врагов для 5 уникальных уровней
 
-from settings import CELL_SIZE, GRID_COLS, GRID_ROWS
+from settings import CELL_SIZE
 
 # 0 = декор/трава (можно ставить башни)
 # 1 = дорога (путь врагов)

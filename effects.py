@@ -1,6 +1,10 @@
 # effects.py — Частицы, взрывы, визуальные эффекты и тряска экрана
 
 import pygame
+from fonts import get_font
+from icons import draw_bomb_icon, draw_ice_icon, draw_gold_icon
+
+ABILITY_ICONS = {"airstrike": draw_bomb_icon, "freeze": draw_ice_icon, "gold": draw_gold_icon}
 import random
 import math
 
@@ -75,12 +79,14 @@ class ShockwaveRing:
 
 class FloatingText:
     """Всплывающий текст (урон, золото и т.д.)"""
-    def __init__(self, x, y, text, color, size=20, lifetime=45):
+    def __init__(self, x, y, text, color, size=20, lifetime=45, icon=None):
         self.x = x
         self.y = y
         self.text = text
+        self.icon = icon
+        self.icon_size = size
         self.color = color
-        self.font = pygame.font.Font(None, size)
+        self.font = get_font(size)
         self.lifetime = lifetime
         self.max_lifetime = lifetime
         self.alive = True
@@ -99,12 +105,15 @@ class FloatingText:
         g = int(self.color[1] * alpha_ratio)
         b = int(self.color[2] * alpha_ratio)
         
-        # Обводка текста для сочности
         text_shadow = self.font.render(self.text, True, (0, 0, 0))
-        surface.blit(text_shadow, (int(self.x) - text_shadow.get_width() // 2 + 1, int(self.y) + 1))
-        
         text_surf = self.font.render(self.text, True, (r, g, b))
-        surface.blit(text_surf, (int(self.x) - text_surf.get_width() // 2, int(self.y)))
+        icon_width = self.icon_size + 6 if self.icon else 0
+        left = int(self.x) - (text_surf.get_width() + icon_width) // 2
+        surface.blit(text_shadow, (left + icon_width + 1, int(self.y) + 1))
+        surface.blit(text_surf, (left + icon_width, int(self.y)))
+        if self.icon:
+            icon_y = int(self.y) + (text_surf.get_height() - self.icon_size) // 2
+            ABILITY_ICONS[self.icon](surface, left, icon_y, self.icon_size)
 
 
 class LaserBeam:
@@ -227,8 +236,8 @@ class EffectsManager:
     def add_hit_effect(self, x, y, color):
         self.add_explosion(x, y, color, count=6, speed=1.8, size=2.5, lifetime=15)
 
-    def add_floating_text(self, x, y, text, color, size=20, lifetime=45):
-        self.floating_texts.append(FloatingText(x, y, text, color, size, lifetime))
+    def add_floating_text(self, x, y, text, color, size=20, lifetime=45, icon=None):
+        self.floating_texts.append(FloatingText(x, y, text, color, size, lifetime, icon))
 
     def add_gold_text(self, x, y, amount):
         self.floating_texts.append(FloatingText(x, y, f"+{amount}g", (255, 215, 0), 22, 50))

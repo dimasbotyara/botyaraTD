@@ -188,6 +188,16 @@ ENEMY_STATS = {
 # === ВОЛНЫ ===
 MAX_WAVES = 25
 
+# === СЛОЖНОСТЬ ===
+# Множители: размер волны, номер волны для роста HP, HP, награда, бонус.
+DIFFICULTY_MODIFIERS = {
+    0: {"enemy_count": 0.75, "wave_scale": 1.0, "hp": 0.8, "reward": 1.3, "wave_bonus": 1.5},
+    1: {"enemy_count": 1.0, "wave_scale": 1.0, "hp": 1.0, "reward": 1.0, "wave_bonus": 1.0},
+    2: {"enemy_count": 1.25, "wave_scale": 1.3, "hp": 1.2, "reward": 0.8, "wave_bonus": 0.7},
+    3: {"enemy_count": 1.5, "wave_scale": 1.5, "hp": 1.5, "reward": 0.7, "wave_bonus": 0.6},
+    4: {"enemy_count": 2.0, "wave_scale": 1.8, "hp": 2.0, "reward": 0.6, "wave_bonus": 0.5},
+}
+
 # === ИГРОК ===
 START_GOLD = 250
 START_LIVES = 25
